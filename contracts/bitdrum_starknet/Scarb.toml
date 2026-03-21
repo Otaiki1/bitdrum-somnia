@@ -20,7 +20,7 @@ test = "snforge test"
 
 [[tool.snforge.fork]]
 name = "mainnet"
-url = "https://starknet-mainnet.public.blastapi.io/rpc/v0_7" # <-- REPLACE WITH YOUR INFURA/ALCHEMY RPC URL
+url = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/YOUR_API_KEY_HERE"
 block_id.tag = "latest"
 
 [tool.scarb]
