@@ -1,0 +1,23 @@
+{
+  "name": "bitdrum-indexer",
+  "version": "1.0.0",
+  "description": "Social Indexer for BitDrum protocol",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "nodemon src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "pg": "^8.11.3",
+    "starknet": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.9",
+    "@types/pg": "^8.10.7",
+    "nodemon": "^3.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2"
+  }
+}
