@@ -21,16 +21,13 @@ body {
 }
 
 /* Glassmorphism Utilities */
-.glass {
+.glass-morphism {
   background: var(--color-glass);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-glass-border);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-}
-
-.glass-morphism {
-  @apply glass rounded-2xl p-6 transition-all duration-300;
+  @apply rounded-2xl p-6 transition-all duration-300;
 }
 
 .glass-morphism:hover {

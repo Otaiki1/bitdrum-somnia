@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType, IChartApi } from 'lightweight-charts';
+import { createChart, ColorType, IChartApi, AreaSeries } from 'lightweight-charts';
 
 interface PriceChartProps {
   data?: any[];
@@ -30,7 +30,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({ data }) => {
       },
     });
 
-    const series = chart.addAreaSeries({
+    const series = chart.addSeries(AreaSeries, {
       lineColor: '#f97316',
       topColor: 'rgba(249, 115, 22, 0.3)',
       bottomColor: 'rgba(249, 115, 22, 0.0)',
