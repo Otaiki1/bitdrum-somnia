@@ -190,21 +190,20 @@ fn test_winner_payout_asymmetric_pools() {
 
 // ─── pragma oracle integration test ──────────────────────────────────────────
 
-use bitdrum_starknet::settlement_engine::SettlementEngine::{DataType, IPragmaABIDispatcher, IPragmaABIDispatcherTrait};
+use bitdrum_starknet::settlement_engine::{DataType, IPragmaABIDispatcher, IPragmaABIDispatcherTrait};
 use snforge_std::{declare, ContractClassTrait, DeclareResultTrait, start_cheat_block_timestamp_global};
 
 #[starknet::contract]
 mod MockPragma {
-    use bitdrum_starknet::settlement_engine::SettlementEngine::{DataType, PragmaPricesResponse};
+    use bitdrum_starknet::settlement_engine::{DataType, PragmaPricesResponse};
     use starknet::get_block_timestamp;
 
     #[storage]
     struct Storage {}
 
     #[abi(embed_v0)]
-    impl MockPragmaImpl of bitdrum_starknet::settlement_engine::SettlementEngine::IPragmaABI<ContractState> {
+    impl MockPragmaImpl of bitdrum_starknet::settlement_engine::IPragmaABI<ContractState> {
         fn get_data_median(self: @ContractState, data_type: DataType) -> PragmaPricesResponse {
-            // Return a dummy BTC/USD price: $65,000.00 with 8 decimals = 65000_00000000
             PragmaPricesResponse {
                 price: 65000_00000000,
                 decimals: 8,
