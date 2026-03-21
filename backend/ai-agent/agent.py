@@ -5,6 +5,7 @@ from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from tools import bitdrum_tools
+from memory import get_episodic_memory
 
 load_dotenv()
 
@@ -81,13 +82,24 @@ async def generate_signal(market_id: str):
     """
     Runs the ReAct loop to generate a signal for a specific market.
     """
+    memory = get_episodic_memory()
+    memory_context = ""
+    if memory:
+        memory_context = "\nYour past performance history (Episodic Memory):\n"
+        for entry in memory[-5:]: # Last 5 outcomes
+            memory_context += f"- Market {entry['market_id']}: Predicted {entry['predicted_direction']}, Outcome {entry['actual_outcome']} (Accurate: {entry['was_accurate']})\n"
+
     prompt = f"""
     Analyze the current market conditions for BitDrum Market ID: {market_id}.
+    {memory_context}
+    
     You must:
     1. Check the current BTC price.
     2. Analyze the UP/DOWN pool ratio.
     3. Check the positioning of top traders.
     4. Provide a Bullish, Bearish, or Neutral signal with a confidence score (0-100) and rationale.
+    
+    IMPORTANT: Reflect on your past performance history if available. If you have been inaccurate on similar pool ratios, adjust your reasoning.
     """
     
     inputs = {"messages": [HumanMessage(content=prompt)]}
