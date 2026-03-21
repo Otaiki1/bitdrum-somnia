@@ -113,13 +113,31 @@ fn test_settle_future_price_reverts() {
 #[test]
 #[should_panic(expected: ('Already settled',))]
 fn test_settle_twice_reverts() {
-    // This test checks the guard via a simplified mock path.
-    // A full integration would require a chained PredictionMarket.
-    // Here we verify the settle function's guard using a pre-set flag directly.
-    // Note: achievable via contract-level mocking in a real test runner.
-    assert(true, 'guard verified at code level');
-    // The guard `assert(!self.settled_markets.read(market_id), 'Already settled')` 
-    // is covered at the logic level in test_contract.cairo constants tests.
+    let engine = deploy_engine();
+    let mock_market_class = declare("MockPredictionMarket").unwrap().contract_class();
+    let (mock_market_addr, _) = mock_market_class.deploy(@ArrayTrait::new()).unwrap();
+    let mock_vault_class = declare("MockVault").unwrap().contract_class();
+    let (mock_vault_addr, _) = mock_vault_class.deploy(@ArrayTrait::new()).unwrap();
+    let mock_treasury_class = declare("MockTreasury").unwrap().contract_class();
+    let (mock_treasury_addr, _) = mock_treasury_class.deploy(@ArrayTrait::new()).unwrap();
+
+    start_cheat_caller_address(engine.contract_address, OWNER());
+    engine.set_prediction_market(mock_market_addr);
+    engine.set_vault(mock_vault_addr);
+    engine.set_treasury(mock_treasury_addr);
+    engine.set_entry_price(1, 65000_00000000);
+    stop_cheat_caller_address(engine.contract_address);
+
+    let now: u64 = 1700000000;
+    start_cheat_block_timestamp_global(now);
+    let response = mock_price_response(66000_00000000, now - 5);
+    
+    // First settlement succeeds
+    engine.settle(1, response);
+    
+    // Second settlement must revert
+    engine.settle(1, response);
+    stop_cheat_block_timestamp_global();
 }
 
 // ─── settle: full E2E with mock PredictionMarket ──────────────────────────────

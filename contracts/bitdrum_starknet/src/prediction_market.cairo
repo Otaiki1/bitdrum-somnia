@@ -177,6 +177,7 @@ pub mod PredictionMarket {
                 pom_profit_bps >= MIN_PROFIT_BPS && pom_profit_bps <= MAX_PROFIT_BPS,
                 'POM bps out of range',
             );
+            assert(direction != Direction::Placeholder, 'Invalid direction');
 
             let opener = get_caller_address();
             let now = get_block_timestamp();
@@ -208,6 +209,7 @@ pub mod PredictionMarket {
                     };
                     self.participants.write((id, vault_addr), vault_participant);
                 },
+                Direction::Placeholder => { panic!("Invalid direction"); }
             }
             // Vault funds stay in vault contract; we just track the exposure.
             // vault_dispatcher is used during settlement to pay out / absorb.
@@ -224,8 +226,8 @@ pub mod PredictionMarket {
                 join_deadline,
                 pom_profit_bps,
                 opener_direction: direction,
-                long_pool: match direction { Direction::Long => stake, Direction::Short => stake },
-                short_pool: match direction { Direction::Long => stake, Direction::Short => stake },
+                long_pool: match direction { Direction::Long => stake, Direction::Short => stake, Direction::Placeholder => 0 },
+                short_pool: match direction { Direction::Long => stake, Direction::Short => stake, Direction::Placeholder => 0 },
                 state: MarketState::Open,
                 settlement_price: 0,
                 settled_at: 0,
@@ -255,6 +257,7 @@ pub mod PredictionMarket {
             stake: u128,
         ) {
             assert(stake > 0, 'Stake must be > 0');
+            assert(direction != Direction::Placeholder, 'Invalid direction');
             let mut market = self.markets.read(market_id);
             assert(market.state == MarketState::Open, 'Market not open');
             let now = get_block_timestamp();
@@ -271,6 +274,7 @@ pub mod PredictionMarket {
             match direction {
                 Direction::Long => { market.long_pool += stake; },
                 Direction::Short => { market.short_pool += stake; },
+                Direction::Placeholder => { panic!("Invalid direction"); }
             }
             self.markets.write(market_id, market);
 

@@ -7,9 +7,11 @@ use starknet::ContractAddress;
 // ---------------------------------------------------------------------------
 // Market state machine
 // ---------------------------------------------------------------------------
-#[allow(starknet::store_no_default_variant)]
-#[derive(Drop, Serde, starknet::Store, PartialEq, Copy)]
+#[derive(Drop, Serde, starknet::Store, PartialEq, Copy, Default)]
 pub enum MarketState {
+    #[default]
+    /// Reserved for uninitialized state.
+    Placeholder,
     /// Market is open and accepting participants.
     Open,
     /// Joining window has closed; no new participants allowed.
@@ -25,9 +27,10 @@ pub enum MarketState {
 // ---------------------------------------------------------------------------
 // Prediction direction
 // ---------------------------------------------------------------------------
-#[allow(starknet::store_no_default_variant)]
-#[derive(Drop, Serde, starknet::Store, PartialEq, Copy)]
+#[derive(Drop, Serde, starknet::Store, PartialEq, Copy, Default)]
 pub enum Direction {
+    #[default]
+    Placeholder,
     Long,
     Short,
 }

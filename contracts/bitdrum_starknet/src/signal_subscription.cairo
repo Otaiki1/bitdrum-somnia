@@ -10,9 +10,9 @@
 
 use starknet::ContractAddress;
 
-#[allow(starknet::store_no_default_variant)]
-#[derive(Drop, Serde, starknet::Store, PartialEq, Copy)]
+#[derive(Drop, Serde, starknet::Store, PartialEq, Copy, Default)]
 pub enum SubscriptionTier {
+    #[default]
     None,
     Pro,
     Elite,
