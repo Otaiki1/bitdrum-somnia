@@ -1,24 +1,37 @@
 import { Router } from 'express';
 import axios from 'axios';
+import { Pool } from 'pg';
+import dotenv from 'dotenv';
 import { checkSubscription } from '../middleware/auth';
 
+dotenv.config();
+
 const router = Router();
+const pool = new Pool({
+  connectionString: process.env.POSTGRES_CONNECTION_STRING || "postgresql://0t41k1@localhost:5432/bitdrum",
+});
 
 // 1. Public Market Feed
 router.get('/markets', async (req, res) => {
   try {
-    // Proxy to Social Indexer (logic would query Postgres)
-    // For now, providing a structured response
-    console.log(`[Gateway] Fetching markets from Indexer...`);
-    res.json({ 
-        markets: [
-            { id: "0x1", state: "OPEN", direction: "UP", strike_price: "65000" },
-            { id: "0x2", state: "LOCKED", direction: "DOWN", strike_price: "64800" }
-        ],
-        source: "Social Indexer" 
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Indexer unavailable' });
+    console.log(`[Gateway] Fetching markets from Postgres...`);
+    // Query local bitdrum schema populated by indexer
+    const { rows } = await pool.query('SELECT * FROM markets ORDER BY opened_at DESC LIMIT 50');
+    
+    // Convert to standard format for frontend
+    const markets = rows.map(r => ({
+      id: r.market_id,
+      state: r.state,
+      direction: r.opener_direction,
+      entry_price: r.entry_price,
+      settlement_price: r.settlement_price,
+      strike_price: r.entry_price // Some clients use strike_price interchangeably
+    }));
+
+    res.json({ markets, source: "Postgres DB" });
+  } catch (error: any) {
+    console.error("[Gateway] Markets error:", error);
+    res.status(500).json({ error: 'Database unavailable' });
   }
 });
 
@@ -29,29 +42,26 @@ router.get('/signal/:market_id', checkSubscription, async (req, res) => {
   
   try {
     // Proxy to AI Agent (Python/FastAPI)
-    const response = await axios.post('http://localhost:8000/signal', {
+    const response = await axios.post(`${process.env.AI_AGENT_URL || 'http://localhost:8000'}/signal`, {
       market_id
     });
     
     res.json(response.data);
-  } catch (error) {
-    res.status(500).json({ error: 'AI Agent unavailable', details: (error as any).message });
+  } catch (error: any) {
+    console.error(`[Gateway] AI Error: ${error.message}`);
+    res.status(500).json({ error: 'AI Agent unavailable', details: error.message });
   }
 });
 
 // 3. Leaderboard
 router.get('/leaderboard', async (req, res) => {
     try {
-        // Proxy to Social Indexer for top traders
-        res.json({ 
-            rankings: [
-                { address: "0x123", score: 95, tier: "ORACLE" },
-                { address: "0x456", score: 88, tier: "PROPHET" }
-            ],
-            source: "Social Indexer"
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Indexer unavailable' });
+        console.log(`[Gateway] Fetching leaderboard from Postgres...`);
+        const { rows } = await pool.query('SELECT address, composite_score as score, tier FROM traders ORDER BY composite_score DESC LIMIT 50');
+        res.json({ rankings: rows, source: "Postgres DB" });
+    } catch (error: any) {
+        console.error("[Gateway] Leaderboard error:", error);
+        res.status(500).json({ error: 'Database unavailable' });
     }
 });
 

@@ -14,13 +14,14 @@ assert_macros = "2.15.0"
 
 [[target.starknet-contract]]
 sierra = true
+casm = true
 
 [scripts]
 test = "snforge test"
 
 [[tool.snforge.fork]]
 name = "mainnet"
-url = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/YOUR_API_KEY_HERE"
+url = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/Ft5-P5cp79yfsC-yCfDtZ5WIptqFa095"
 block_id.tag = "latest"
 
 [tool.scarb]
@@ -55,3 +56,8 @@ allow-prebuilt-plugins = ["snforge_std"]
 
 # [features]                                                 # Used for conditional compilation
 # enable_for_tests = []                                      # Feature name and list of other features that should be enabled with it
+
+[[tool.snforge.fork]]
+name = "sepolia"
+url = "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_10/Ft5-P5cp79yfsC-yCfDtZ5WIptqFa095"
+block_id.tag = "latest"

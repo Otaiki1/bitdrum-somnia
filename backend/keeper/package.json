@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "dotenv": "^16.3.1",
-    "starknet": "^6.0.0"
+    "starknet": "^9.4.2"
   },
   "devDependencies": {
     "@types/node": "^20.8.9",
