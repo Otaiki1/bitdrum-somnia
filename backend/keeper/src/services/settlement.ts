@@ -27,18 +27,37 @@ export const settleExpiredMarkets = async () => {
     }
 
     for (const marketId of expiredMarkets) {
-      console.log(`[Keeper] Settling market: ${marketId}`);
+      console.log(`[Keeper] Attempting to settle market: ${marketId}`);
       
-      // Execute the settlement transaction
-      const result = await account.execute({
-        contractAddress: MARKET_CONTRACT_ADDRESS,
-        entrypoint: 'settle_market',
-        calldata: [marketId]
-      });
-      
-      console.log(`[Keeper] Settlement TX submitted: ${result.transaction_hash}`);
-      await provider.waitForTransaction(result.transaction_hash);
-      console.log(`[Keeper] Market ${marketId} settled successfully!`);
+      let attempts = 0;
+      const maxAttempts = 3;
+      let success = false;
+
+      while (attempts < maxAttempts && !success) {
+        try {
+          attempts++;
+          const result = await account.execute({
+            contractAddress: MARKET_CONTRACT_ADDRESS,
+            entrypoint: 'settle_market',
+            calldata: [marketId]
+          });
+          
+          console.log(`[Keeper] Settlement TX submitted (Attempt ${attempts}): ${result.transaction_hash}`);
+          await provider.waitForTransaction(result.transaction_hash);
+          console.log(`[Keeper] Market ${marketId} settled successfully!`);
+          success = true;
+        } catch (error) {
+          console.error(`[Keeper] Settlement failed for ${marketId} (Attempt ${attempts}/${maxAttempts}):`, (error as any).message);
+          if (attempts < maxAttempts) {
+            console.log(`[Keeper] Retrying in 2 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+
+      if (!success) {
+        console.error(`[Keeper] Critical: Failed to settle market ${marketId} after ${maxAttempts} attempts.`);
+      }
     }
     */
 
