@@ -12,7 +12,7 @@ Implement the core logic of BitDrum on Starknet using Cairo. The system must be 
 - Ensure users can only join during the `JOINING_WINDOW`.
 
 ### 2. Oracle Integration (SettlementEngine.cairo)
-- Integrate **Pragma Oracle**'s pull model.
+- Integrate **Pragma Oracle**'s pull model.  https://docs.pragma.build/starknet/assets#spot. BTC/USD
 - Function: `settle(market_id, price_attestation)`.
 - Validate attestation age and signature.
 
@@ -30,7 +30,7 @@ Implement the core logic of BitDrum on Starknet using Cairo. The system must be 
 
 ## Required Criteria
 
-- [ ] All contracts must be written in **Cairo 1.x**.
+- [ ] All contracts must be written in **Cairo**.
 - [ ] No single EOA should have access to user funds.
 - [ ] Price attestations older than 30 seconds must be rejected.
 - [ ] POM profit percentage must be strictly between 5% and 70%.
