@@ -1,12 +1,38 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { PriceChart } from './PriceChart';
 import { TradePanel } from './TradePanel';
 import { MarketFeed, LeaderboardCard } from './SocialFeed';
-import { Menu, Bell, Wallet } from 'lucide-react';
+import { Menu, Bell, Wallet, LogOut } from 'lucide-react';
+import { usePrivy } from '@privy-io/react-auth';
+import { useAccount, useConnect, useDisconnect } from '@starknet-react/core';
 
 export const TradingDashboard = () => {
+  const { login, logout, authenticated, user } = usePrivy();
+  const { address, status } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+
+  // Handle Starkzap/Privy sync to Starknet React
+  const handleAuth = () => {
+    if (authenticated) {
+      if (address) disconnect();
+      logout();
+    } else {
+      login();
+      // We will assume standard wallet login connects via starknet-react directly 
+      // if privy is not fully integrated with starknet in this specific mock version.
+      // But starkzap design expects Privy as the Auth gate.
+      if (connectors.length > 0 && !address) {
+          connect({ connector: connectors[0] });
+      }
+    }
+  };
+
+  const displayAddress = user?.wallet?.address || address;
+  const shortAddress = displayAddress ? `${displayAddress.slice(0, 6)}...${displayAddress.slice(-4)}` : '';
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white p-4 md:p-8 selection:bg-orange-500 selection:text-white">
       {/* Header */}
@@ -26,10 +52,23 @@ export const TradingDashboard = () => {
             <Bell className="w-5 h-5 text-gray-400" />
             <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full border-2 border-[#0a0a0a]" />
           </button>
-          <button className="flex items-center gap-3 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all group">
-            <div className="w-8 h-8 rounded-full bg-gradient flex items-center justify-center text-xs font-bold">0x</div>
-            <span className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors">Connect Wallet</span>
-          </button>
+          
+          {authenticated || address ? (
+            <button onClick={handleAuth} className="flex items-center gap-3 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-red-500/20 hover:border-red-500/50 transition-all group">
+              <div className="w-8 h-8 rounded-full bg-gradient flex items-center justify-center text-xs font-bold">
+                <img src={`https://api.dicebear.com/7.x/identicon/svg?seed=${displayAddress}`} alt="avatar" className="w-8 h-8 rounded-full" />
+              </div>
+              <span className="text-sm font-bold text-gray-300 group-hover:hidden">{shortAddress}</span>
+              <span className="text-sm font-bold text-red-500 hidden group-hover:flex items-center gap-2">
+                <LogOut className="w-4 h-4" /> Disconnect
+              </span>
+            </button>
+          ) : (
+            <button onClick={handleAuth} className="flex items-center gap-3 px-6 py-3 bg-orange-500/10 border border-orange-500/50 rounded-2xl hover:bg-orange-500 hover:text-white transition-all group text-orange-500">
+              <Wallet className="w-5 h-5" />
+              <span className="text-sm font-bold transition-colors">Connect Wallet</span>
+            </button>
+          )}
           <button className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all md:hidden">
             <Menu className="w-5 h-5" />
           </button>
