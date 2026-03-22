@@ -9,12 +9,12 @@ export const checkSubscription = async (req: Request, res: Response, next: NextF
   const userAddress = req.headers['x-user-address'] as string;
   const requiredTier = req.query.tier as string; // e.g., 'PRO' or 'ELITE'
 
-  if (!userAddress) {
-    return res.status(401).json({ error: 'Missing x-user-address header' });
+  if (!requiredTier) {
+    return next(); // Free/basic signal access does not require a wallet header.
   }
 
-  if (!requiredTier) {
-    return next(); // If no tier required, proceed
+  if (!userAddress) {
+    return res.status(401).json({ error: 'Missing x-user-address header' });
   }
 
   try {
