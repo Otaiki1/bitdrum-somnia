@@ -1,50 +1,37 @@
-# BitDrum Backend: Integration Gap Analysis
+# BitDrum Gap Analysis (Operational Readiness)
 
-This document outlines the remaining steps to fully integrate the BitDrum backend and prepare it for production.
+This document is the definitive list of unimplemented or incomplete features based on the `bitdrum-system-overview.md` and `implementation_guide.md`, compared against the actual codebase state as of March 22, 2026.
 
-## 1. Current State Summary
-- **AI Agent**: ReAct Reasoning loop & memory system implemented.
-- **Indexer**: Event listening loop and database handlers ready.
-- **Gateway**: Core structure and subscription gating implemented.
-- **Keeper**: Polling engine and settlement logic with retry mechanisms ready.
+## 🔴 CRITICAL (Blocks Mainnet Launch/Security)
+- [x] **Oracle Signature Verification**: `SettlementEngine.cairo` now cross-checks keeper-submitted Pragma snapshots against the configured Starknet Pragma oracle response before settlement.
+- [x] **Mock Price Removal**: `backend/keeper/src/services/settlement.ts` now fetches live BTC/USD data from Pragma instead of using a hardcoded mock price.
+- [x] **Keeper Robustness**: The keeper now persists per-market progress and recovery state so restarts do not lose lock/settlement context.
 
----
+## 🟠 HIGH (Core Logic Gaps)
+- [x] **Composite Score & Tier Logic**: The indexer now computes trader stats, composite scores, tiers, and AI signal accuracy feedback from indexed settlements.
+- [x] **Dynamic POM Multiplier**: `TradePanel.tsx` now fetches live preview and market POM values from the AI agent instead of hardcoding 10%.
+- [x] **AI Signal Persistence**: The AI Agent now persists generated signals to `ai_signals`, enabling the accuracy feedback loop.
 
-## 2. Integration Checklist (Remaining Steps)
+## 🟡 MAJOR FRONTEND INTEGRATION GAPS (UX Blocks)
+- [x] **AI Signal Display UI**: The `TradePanel` now renders AI rationale, confidence, direction, and POM context for preview and live markets.
+- [x] **Active Predictions & PnL**: The gateway now exposes `/api/positions/:address`, and the dashboard renders real positions, win rate, and PnL.
+- [x] **Claiming Wins UI**: The dashboard now includes claim actions wired to the `claim()` contract entrypoint.
+- [x] **Joining Existing Markets**: Users can now select markets from the feed and join them from the execution panel.
+- [x] **Dynamic Stake Logic**: Market open flows now fetch dynamic POM quotes before submitting transactions.
 
-### Phase A: Smart Contract Deployment
-To provide real data to the backend, the following must be deployed to **Starknet Sepolia**:
-- [ ] **PredictionMarket.cairo**: The core protocol contract.
-- [ ] **SignalSubscription.cairo**: Tiered gating for AI signals.
-- [ ] **LeaderboardRegistry.cairo**: Record of trader performances.
+## 🟡 MEDIUM (Social & Economy)
+- [x] **Social Following API**: The gateway now supports follow/unfollow and feed endpoints, and the frontend consumes them.
+- [x] **Reputation Badges**: Leaderboard tiers and trader badges are now rendered in the live social feed and leaderboard UI.
 
-### Phase B: API Keys & Secrets
-The following environment variables must be populated in each service's `.env` file:
-- **AI Agent**:
-  - `OPENAI_API_KEY`: Required for the ReAct reasoning logic.
-- **Indexer/Keeper/Gateway**:
-  - `STARKNET_RPC_URL`: Endpoint for Sepolia (e.g., Infura, Blast, or Nethermind).
-  - `MARKET_CONTRACT_ADDRESS`: Deployed address of the Prediction Market.
-  - `SUBSCRIPTION_CONTRACT_ADDRESS`: Deployed address of the Subscription contract.
-  - `KEEPER_ADDRESS` & `KEEPER_PRIVATE_KEY`: Account for the automated bot.
-  - `DATABASE_URL`: Connection string for the PostgreSQL database.
-
-### Phase C: Logic Refinement
-- [ ] **Oracle Integration**: Replace mocked price calls with the real **Pragma Oracle** SDK.
-- [ ] **WebSocket Streams**: Implement `Socket.io` or `ws` in the Gateway for live frontend updates.
-- [ ] **Reputation Logic**: Finalize the consistency/composite score algorithm in the Indexer.
-
-### Phase D: Infrastructure & Launch
-- [ ] **Docker Compose**: Create a root-level `docker-compose.yml` to orchestrate all services.
-- [ ] **Database Migrations**: Set up a tool like `Prisma` or `node-pg-migrate` for the Indexer.
-- [ ] **CI/CD**: Configure GitHub Actions for automated builds and testing.
+## 🔵 LOW (Polish & Scalability)
+- [x] **AVNU Paymaster**: `frontend/src/utils/starkzap.ts` now supports optional AVNU-sponsored execution via `NEXT_PUBLIC_AVNU_PAYMASTER_URL`.
+- [x] **Real-time Charts**: `PriceChart.tsx` already uses Lightweight Charts with live BTC/USD data from Pyth/Hermes.
+- [x] **WebSocket Push**: The gateway now exposes `/ws` live streams for markets, leaderboard, feed, and positions, and the frontend consumes them.
 
 ---
 
-## 3. Step-by-Step Integration Workflow
-
-1. **Deploy Contracts**: Use Starknet Foundry (`sncast`) to deploy contracts.
-2. **Update Addresses**: Paste contract addresses into the `.env` files of all 4 backend services.
-3. **Initialize DB**: Run `schema.sql` on your Postgres instance.
-4. **Boot Services**: Run the indexer first, then the gateway, then the agent.
-5. **Frontend Link**: Connect the Next.js frontend to the Gateway URL (`PORT 3001`).
+### Implementation Priority Order:
+1.  **Security & Oracle**: Signature verification in Cairo + real Pragma fetch in Keeper.
+2.  **Reputation System**: Indexer stats calculation + `/api/positions` endpoint.
+3.  **Intelligence UI**: AI Signal Display in `TradePanel` + Dynamic POM fetch.
+4.  **Economic Polish**: Claim UI + Social Following endpoints.
