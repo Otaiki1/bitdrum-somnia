@@ -29,6 +29,9 @@ pub trait IPredictionMarket<TContractState> {
     /// Anyone may call this to prevent stall attacks.
     fn lock_market(ref self: TContractState, market_id: u64);
 
+    /// Persist the strike / entry price once the joining window closes.
+    fn set_entry_price(ref self: TContractState, market_id: u64, entry_price: u128);
+
     /// Mark market as CLAIMABLE (called by SettlementEngine).
     fn mark_claimable(ref self: TContractState, market_id: u64, settlement_price: u128, settled_at: u64);
 
@@ -293,6 +296,19 @@ pub mod PredictionMarket {
             market.state = MarketState::Locked;
             self.markets.write(market_id, market);
             self.emit(MarketLocked { market_id });
+        }
+
+        fn set_entry_price(ref self: ContractState, market_id: u64, entry_price: u128) {
+            let caller = get_caller_address();
+            assert(
+                caller == self.owner.read() || caller == self.settlement_engine.read(),
+                'Unauthorized',
+            );
+            assert(entry_price > 0, 'Entry price must be > 0');
+
+            let mut market = self.markets.read(market_id);
+            market.entry_price = entry_price;
+            self.markets.write(market_id, market);
         }
 
         fn mark_claimable(

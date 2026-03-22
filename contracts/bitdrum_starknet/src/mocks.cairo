@@ -127,6 +127,7 @@ pub mod MockPredictionMarket {
         fn open_market(ref self: ContractState, direction: Direction, pom_profit_bps: u16, stake: u128) -> u64 { 1 }
         fn join_market(ref self: ContractState, market_id: u64, direction: Direction, stake: u128) {}
         fn lock_market(ref self: ContractState, market_id: u64) {}
+        fn set_entry_price(ref self: ContractState, market_id: u64, entry_price: u128) {}
         fn mark_claimable(ref self: ContractState, market_id: u64, settlement_price: u128, settled_at: u64) {}
         fn claim(ref self: ContractState, market_id: u64) {}
         fn close_market(ref self: ContractState, market_id: u64) {}

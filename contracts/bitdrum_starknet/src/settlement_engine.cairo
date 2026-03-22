@@ -216,6 +216,14 @@ pub mod SettlementEngine {
             );
             assert(price > 0, 'Price must be > 0');
             self.entry_prices.write(market_id, price);
+
+            let prediction_market = self.prediction_market.read();
+            if prediction_market != core::num::traits::Zero::zero() {
+                let pm = IPredictionMarketDispatcher {
+                    contract_address: prediction_market,
+                };
+                pm.set_entry_price(market_id, price);
+            }
         }
 
         fn set_prediction_market(ref self: ContractState, market: ContractAddress) {
