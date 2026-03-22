@@ -37,7 +37,8 @@ pub trait IPragmaABI<TContractState> {
 
 #[starknet::interface]
 pub trait ISettlementEngine<TContractState> {
-    /// Settle a locked market — caller must provide signed price response from Pragma.
+    /// Settle a locked market using a keeper-supplied snapshot that must match the trusted
+    /// Pragma oracle response on-chain exactly.
     fn settle(ref self: TContractState, market_id: u64, price_response: PragmaPricesResponse);
 
     /// Set the entry price for a locked market (called at lock time).
@@ -140,7 +141,7 @@ pub mod SettlementEngine {
             // Guard: already settled?
             assert(!self.settled_markets.read(market_id), 'Already settled');
 
-            // ── 1. Validate keeper payload against configured oracle ────────
+            // ── 1. Validate keeper snapshot against configured oracle ───────
             let verified_response = self._verify_price_response(price_response);
             let settlement_price = verified_response.price;
             let price_timestamp = verified_response.last_updated_timestamp;
