@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "apibara dev",
+    "dev": "apibara dev --indexers bitdrum",
     "build": "apibara build",
-    "start": "apibara start",
+    "start": "apibara start --indexer bitdrum",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
