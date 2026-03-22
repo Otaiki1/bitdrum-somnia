@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -10,8 +9,10 @@ import {
   Sparkles,
   TrendingDown,
   TrendingUp,
+  Wallet,
   Zap,
 } from 'lucide-react';
+import { useCartridgeWallet } from './CartridgeWalletProvider';
 import { API_BASE } from '../utils/starkzap';
 import {
   formatTokenAmount,
@@ -35,7 +36,7 @@ export const TradePanel = ({
   onClearSelection?: () => void;
 }) => {
   const queryClient = useQueryClient();
-  const { getAccessToken, user, authenticated } = usePrivy();
+  const { wallet, authenticated, connecting, connect } = useCartridgeWallet();
 
   const [stake, setStake] = useState('10');
   const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
@@ -113,9 +114,19 @@ export const TradePanel = ({
     return numericStake * (currentPomBps / 10_000);
   }, [currentPomBps, stake]);
 
+  const handleConnect = async () => {
+    setError(null);
+
+    try {
+      await connect();
+    } catch (caughtError: any) {
+      setError(caughtError?.message || 'Cartridge connection failed');
+    }
+  };
+
   const handleTrade = async (direction: BitdrumDirection) => {
-    if (!authenticated || !user) {
-      setError('Login with Privy to trade.');
+    if (!authenticated || !wallet) {
+      setError('Connect Cartridge to trade.');
       return;
     }
 
@@ -141,7 +152,7 @@ export const TradePanel = ({
         const pomProfitBps = Number(pomPayload?.pom?.pom_profit_bps || currentPomBps);
 
         await openMarket({
-          getAccessToken,
+          wallet,
           direction,
           stake,
           pomProfitBps,
@@ -150,7 +161,7 @@ export const TradePanel = ({
         setStatusMessage(`Opened a ${direction} market.`);
       } else if (activeMarket?.id) {
         await joinMarket({
-          getAccessToken,
+          wallet,
           marketId: activeMarket.id,
           direction,
           stake,
@@ -186,7 +197,7 @@ export const TradePanel = ({
             </h3>
             <p className="mt-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
               <Zap className="h-3 w-3 text-orange-400" />
-              AI Signal + Dynamic POM
+              Cartridge + Dynamic POM
             </p>
           </div>
         </div>
@@ -314,9 +325,14 @@ export const TradePanel = ({
       ) : null}
 
       {!authenticated ? (
-        <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-3 text-[10px] font-black uppercase tracking-[0.28em] text-orange-200">
-          Login with Privy to trade and claim markets.
-        </div>
+        <button
+          onClick={() => void handleConnect()}
+          disabled={connecting}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 p-3 text-[10px] font-black uppercase tracking-[0.28em] text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Wallet className="h-4 w-4" />
+          {connecting ? 'Connecting Cartridge...' : 'Connect Cartridge To Trade'}
+        </button>
       ) : null}
 
       <div className="grid grid-cols-2 gap-3">

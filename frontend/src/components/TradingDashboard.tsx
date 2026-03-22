@@ -3,26 +3,32 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, LogOut, Menu, Wallet } from 'lucide-react';
-import { usePrivy } from '@privy-io/react-auth';
-import { useAccount, useDisconnect } from '@starknet-react/core';
 import { PriceChart } from './PriceChart';
 import { TradePanel } from './TradePanel';
 import { LeaderboardCard, MarketFeed } from './SocialFeed';
+import { useCartridgeWallet } from './CartridgeWalletProvider';
 import { claimMarket, formatTokenAmount, shortAddress, type MarketRecord } from '../utils/bitdrum';
 import { API_BASE } from '../utils/starkzap';
 
 export const TradingDashboard = () => {
   const queryClient = useQueryClient();
-  const { login, logout, authenticated, user, getAccessToken, linkWallet, linkEmail, linkGithub, linkTwitter, linkGoogle } =
-    usePrivy();
-  const { address } = useAccount();
-  const { disconnect } = useDisconnect();
+  const {
+    wallet,
+    address,
+    username,
+    authenticated,
+    connecting,
+    error: walletError,
+    connect,
+    disconnect,
+    openProfile,
+  } = useCartridgeWallet();
 
   const [showAccount, setShowAccount] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
   const [claimingMarketId, setClaimingMarketId] = useState<string | null>(null);
 
-  const viewerAddress = user?.wallet?.address || address || '';
+  const viewerAddress = address ?? '';
 
   const positionsQuery = useQuery({
     queryKey: ['positions', viewerAddress],
@@ -46,20 +52,36 @@ export const TradingDashboard = () => {
     [positionSummary?.resolved_pnl],
   );
 
-  const handleAuth = () => {
-    if (authenticated || address) {
+  const handleAuth = async () => {
+    if (authenticated) {
       setShowAccount(true);
-    } else {
-      login();
+      return;
+    }
+
+    try {
+      await connect();
+      setShowAccount(true);
+    } catch {
+      // Connection errors are surfaced by the wallet provider state.
     }
   };
 
+  const handleDisconnect = async () => {
+    await disconnect();
+    setSelectedMarket(null);
+    setShowAccount(false);
+  };
+
   const handleClaim = async (marketId: string) => {
+    if (!wallet) {
+      return;
+    }
+
     setClaimingMarketId(marketId);
 
     try {
       await claimMarket({
-        getAccessToken,
+        wallet,
         marketId,
       });
 
@@ -72,6 +94,7 @@ export const TradingDashboard = () => {
   };
 
   const shortWallet = viewerAddress ? shortAddress(viewerAddress) : '';
+  const identityLabel = username || shortWallet || 'Controller';
 
   return (
     <div className="relative min-h-screen bg-[#0a0a0a] p-4 text-white selection:bg-orange-500 selection:text-white md:p-8">
@@ -83,10 +106,10 @@ export const TradingDashboard = () => {
             <div className="mb-8 flex items-start justify-between">
               <div>
                 <h2 className="text-3xl font-black uppercase italic tracking-tight text-white">
-                  Identity Hub
+                  Controller Session
                 </h2>
                 <p className="mt-2 text-[10px] font-black uppercase tracking-[0.32em] text-slate-500">
-                  Linked Access
+                  Cartridge Access
                 </p>
               </div>
               <button
@@ -101,10 +124,10 @@ export const TradingDashboard = () => {
               <div className="space-y-5">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">
-                    Protocol Identifier
+                    Controller Handle
                   </p>
-                  <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-300">
-                    {user?.id || 'ANONYMOUS_SESSION'}
+                  <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-200">
+                    {username || 'Anonymous Controller'}
                   </div>
                 </div>
 
@@ -113,82 +136,35 @@ export const TradingDashboard = () => {
                     Execution Wallet
                   </p>
                   <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-white">
-                    {viewerAddress ? shortAddress(viewerAddress) : 'DISCONNECTED'}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => linkWallet()}
-                      className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-black transition hover:bg-orange-400"
-                    >
-                      Manage Wallet
-                    </button>
-                    <button
-                      onClick={() => {
-                        disconnect();
-                        logout();
-                        setShowAccount(false);
-                      }}
-                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 transition hover:border-rose-500/40 hover:text-rose-200"
-                    >
-                      Logout
-                    </button>
+                    {viewerAddress || 'DISCONNECTED'}
                   </div>
                 </div>
               </div>
 
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-                  Linked Identities
-                </p>
-                <div className="mt-3 space-y-2">
-                  {user?.linkedAccounts?.map((account: any, index: number) => (
-                    <div
-                      key={`${account.type}-${index}`}
-                      className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3"
-                    >
-                      <span className="text-xs font-bold uppercase text-slate-200">
-                        {account.type}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {account.address?.slice(0, 10) || account.email || account.username}
-                      </span>
-                    </div>
-                  ))}
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+                    Session Mode
+                  </p>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                    Cartridge handles wallet auth and transaction approval directly through the
+                    controller session.
+                  </p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  {!user?.email ? (
-                    <button
-                      onClick={() => linkEmail()}
-                      className="rounded-xl border border-white/10 bg-white/5 p-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300 transition hover:border-white/20"
-                    >
-                      Link Email
-                    </button>
-                  ) : null}
-                  {!user?.twitter ? (
-                    <button
-                      onClick={() => linkTwitter()}
-                      className="rounded-xl border border-white/10 bg-white/5 p-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300 transition hover:border-white/20"
-                    >
-                      Link Twitter
-                    </button>
-                  ) : null}
-                  {!user?.google ? (
-                    <button
-                      onClick={() => linkGoogle()}
-                      className="rounded-xl border border-white/10 bg-white/5 p-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300 transition hover:border-white/20"
-                    >
-                      Link Google
-                    </button>
-                  ) : null}
-                  {!user?.github ? (
-                    <button
-                      onClick={() => linkGithub()}
-                      className="rounded-xl border border-white/10 bg-white/5 p-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300 transition hover:border-white/20"
-                    >
-                      Link Github
-                    </button>
-                  ) : null}
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => void openProfile()}
+                    className="rounded-xl bg-orange-500 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-black transition hover:bg-orange-400"
+                  >
+                    Open Cartridge Profile
+                  </button>
+                  <button
+                    onClick={() => void handleDisconnect()}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 transition hover:border-rose-500/40 hover:text-rose-200"
+                  >
+                    Disconnect
+                  </button>
                 </div>
               </div>
             </div>
@@ -214,10 +190,10 @@ export const TradingDashboard = () => {
             Trading
           </button>
           <button
-            onClick={() => setShowAccount(true)}
+            onClick={() => authenticated && setShowAccount(true)}
             className="border-b-2 border-transparent pb-1 text-xs font-black uppercase italic tracking-tight text-slate-500 transition hover:border-white/20 hover:text-white"
           >
-            My Account
+            Controller
           </button>
           <button className="border-b-2 border-transparent pb-1 text-xs font-black uppercase italic tracking-tight text-slate-500 transition hover:border-white/20 hover:text-white">
             Leaderboard
@@ -230,23 +206,24 @@ export const TradingDashboard = () => {
             <div className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500" />
           </button>
 
-          {authenticated || viewerAddress ? (
+          {authenticated ? (
             <button
-              onClick={handleAuth}
+              onClick={() => setShowAccount(true)}
               className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 transition hover:border-orange-500/40 hover:bg-orange-500/10"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-gradient text-xs font-bold text-white">
                 {viewerAddress ? viewerAddress.slice(2, 4).toUpperCase() : 'BD'}
               </div>
-              <span className="text-sm font-bold tracking-tight text-slate-200">{shortWallet}</span>
+              <span className="text-sm font-bold tracking-tight text-slate-200">{identityLabel}</span>
             </button>
           ) : (
             <button
-              onClick={handleAuth}
-              className="flex items-center gap-3 rounded-2xl border border-orange-500/40 bg-orange-500/10 px-6 py-3 text-sm font-black uppercase italic tracking-tight text-orange-200 transition hover:bg-orange-500 hover:text-white"
+              onClick={() => void handleAuth()}
+              disabled={connecting}
+              className="flex items-center gap-3 rounded-2xl border border-orange-500/40 bg-orange-500/10 px-6 py-3 text-sm font-black uppercase italic tracking-tight text-orange-200 transition hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Wallet className="h-5 w-5" />
-              Login / Connect
+              {connecting ? 'Connecting...' : 'Connect Cartridge'}
             </button>
           )}
 
@@ -256,7 +233,15 @@ export const TradingDashboard = () => {
         </div>
       </nav>
 
-      <main className={`grid grid-cols-1 gap-6 transition-all lg:grid-cols-12 ${showAccount ? 'blur-xl opacity-20' : 'opacity-100'}`}>
+      {walletError ? (
+        <div className="mb-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-200">
+          {walletError}
+        </div>
+      ) : null}
+
+      <main
+        className={`grid grid-cols-1 gap-6 transition-all lg:grid-cols-12 ${showAccount ? 'blur-xl opacity-20' : 'opacity-100'}`}
+      >
         <div className="flex flex-col gap-6 lg:col-span-8">
           <PriceChart />
 
@@ -288,7 +273,7 @@ export const TradingDashboard = () => {
                 </div>
               ) : positions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
-                  No active stakes yet
+                  {authenticated ? 'No active stakes yet' : 'Connect Cartridge to load positions'}
                 </div>
               ) : (
                 positions.map((position: any) => (
@@ -357,7 +342,9 @@ export const TradingDashboard = () => {
         </div>
       </main>
 
-      <footer className={`mt-20 flex flex-col items-center justify-between gap-4 border-t border-white/5 py-8 opacity-30 grayscale transition-all duration-700 hover:opacity-100 hover:grayscale-0 md:flex-row ${showAccount ? 'blur-xl' : ''}`}>
+      <footer
+        className={`mt-20 flex flex-col items-center justify-between gap-4 border-t border-white/5 py-8 opacity-30 grayscale transition-all duration-700 hover:opacity-100 hover:grayscale-0 md:flex-row ${showAccount ? 'blur-xl' : ''}`}
+      >
         <p className="text-xs font-bold tracking-widest">STARKNET PREDICTION PROTOCOL 2026</p>
         <div className="flex gap-6 text-xs font-black uppercase">
           <span className="transition-colors hover:text-orange-500">Twitter</span>
