@@ -3,7 +3,7 @@ import { settleExpiredMarkets } from './services/settlement';
 
 dotenv.config();
 
-const POLLING_INTERVAL = Number(process.env.POLLING_INTERVAL) || 5000; // 5 seconds
+const POLLING_INTERVAL = Number(process.env.POLLING_INTERVAL) || 3000;
 
 const startKeeper = async () => {
   console.log(`🚀 BitDrum Keeper Service Started`);
