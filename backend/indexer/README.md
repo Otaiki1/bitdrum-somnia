@@ -31,14 +31,24 @@ Sign up at [https://app.apibara.com](https://app.apibara.com), create an API key
 DNA_TOKEN=your-api-key-here
 ```
 
-### 2. Configure Postgres (optional)
+### 2. Configure Postgres
 
-For local dev, the indexer uses an in-memory **PGLite** database automatically. No Postgres installation needed.
+For the full BitDrum demo, the indexer must write into the same PostgreSQL database that the gateway reads from.
 
-For production, set the connection string in `.env`:
+Example `backend/indexer/.env`:
+
 ```
-POSTGRES_CONNECTION_STRING=postgresql://user:pass@host:5432/bitdrum
+DNA_TOKEN=your-api-key-here
+POSTGRES_CONNECTION_STRING=postgresql://0t41k1@localhost:5432/bitdrum
+STARKNET_RPC_URL=https://starknet-sepolia.public.blastapi.io
+VAULT_ADDRESS=0x...
 ```
+
+Notes:
+
+- `POSTGRES_CONNECTION_STRING` is required for the shared demo path.
+- `STARKNET_RPC_URL` is optional and falls back to a public Sepolia RPC.
+- `VAULT_ADDRESS` is optional and only needed if you want vault-related event handling enabled.
 
 ### 3. Run database migrations
 
@@ -47,17 +57,18 @@ npm run db:generate   # Generate SQL migration files
 npm run db:migrate    # Apply migrations to Postgres
 ```
 
-> Skip this step for local dev (PGLite is auto-configured)
-
 ### 4. Run the indexer
 
 ```bash
-# Development (hot reload)
-npm run dev
-
-# Production
+npm install
 npm run build
 npm run start
+```
+
+For local debugging you can still use:
+
+```bash
+npm run dev
 ```
 
 ## Starting Block
