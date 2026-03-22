@@ -1,158 +1,341 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { TrendingUp, TrendingDown, ShieldCheck, Loader2, Zap } from 'lucide-react';
-import { useAccount, useSendTransaction } from '@starknet-react/core';
-import { HermesClient } from '@pythnetwork/hermes-client';
-import { ByteBuffer } from '../utils/pyth';
+import React, { useMemo, useState } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
+import { API_BASE } from '../utils/starkzap';
+import {
+  formatTokenAmount,
+  joinMarket,
+  openMarket,
+  type BitdrumDirection,
+  type MarketRecord,
+} from '../utils/bitdrum';
 
-// Configuration
-const SBTC_ADDRESS = '0x7fe107c968646cb6dd7bc2887149a126b696dbbd8f310ad5ce2ada2223567f1';
-const PREDICTION_MARKET_ADDRESS = '0xe34d84cf5b661f0206d369d9d919b13a13b08ff0eb54e1e3056dd592db4303';
-const PYTH_CONTRACT_ADDRESS = '0x07f2b07b6b5365e7ee055bda4c0ecabd867e6d3ee298d73aea32b027667186d6';
-const BTC_PRICE_ID = '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43';
-const HERMES_URL = 'https://hermes.pyth.network';
+function signalTone(direction: string) {
+  if (direction === 'UP') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
+  if (direction === 'DOWN') return 'border-rose-500/30 bg-rose-500/10 text-rose-200';
+  return 'border-white/10 bg-white/5 text-slate-300';
+}
 
-export const TradePanel = () => {
+export const TradePanel = ({
+  selectedMarket,
+  onClearSelection,
+}: {
+  selectedMarket?: MarketRecord | null;
+  onClearSelection?: () => void;
+}) => {
+  const queryClient = useQueryClient();
+  const { getAccessToken, user, authenticated } = usePrivy();
+
   const [stake, setStake] = useState('10');
-  const [duration, setDuration] = useState('1m');
-  
-  const { account, address } = useAccount();
-  const { send, isPending, error } = useSendTransaction({});
+  const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
+  const [isPending, setIsPending] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleTrade = async (directionEnum: number) => {
-    if (!account) return alert('Please connect your wallet first!');
-    if (!stake || isNaN(Number(stake))) return alert('Invalid stake amount');
-    
-    const amountBigInt = BigInt(Math.floor(Number(stake) * 1e8));
-    
-    let durationSeconds = 60;
-    if (duration === '30s') durationSeconds = 30;
-    if (duration === '1m') durationSeconds = 60;
-    if (duration === '5m') durationSeconds = 300;
-    if (duration === '15m') durationSeconds = 900;
+  const mode = selectedMarket ? 'join' : 'open';
+
+  const marketDetailQuery = useQuery({
+    queryKey: ['market-detail', selectedMarket?.id],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/markets/${selectedMarket?.id}`);
+      if (!response.ok) {
+        throw new Error('Unable to load selected market');
+      }
+
+      return response.json();
+    },
+    enabled: Boolean(selectedMarket?.id),
+    refetchInterval: selectedMarket?.id ? 10_000 : false,
+  });
+
+  const signalQuery = useQuery({
+    queryKey: ['signal', selectedMarket?.id ?? 'preview', previewDirection, stake],
+    queryFn: async () => {
+      const url = selectedMarket?.id
+        ? `${API_BASE}/signal/${selectedMarket.id}`
+        : `${API_BASE}/signal/preview?direction=${previewDirection}&stake=${stake}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Unable to load signal');
+      }
+
+      return response.json();
+    },
+    refetchInterval: selectedMarket?.id ? 20_000 : 15_000,
+  });
+
+  const pomQuery = useQuery({
+    queryKey: ['pom', selectedMarket?.id ?? 'preview', previewDirection, stake],
+    queryFn: async () => {
+      const url = selectedMarket?.id
+        ? `${API_BASE}/pom/${selectedMarket.id}`
+        : `${API_BASE}/pom/preview?direction=${previewDirection}&stake=${stake}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Unable to load POM quote');
+      }
+
+      return response.json();
+    },
+    refetchInterval: selectedMarket?.id ? 20_000 : 15_000,
+  });
+
+  const activeMarket = selectedMarket?.id
+    ? {
+        ...selectedMarket,
+        ...marketDetailQuery.data?.market,
+      }
+    : null;
+
+  const signal = signalQuery.data?.signal;
+  const pom = pomQuery.data?.pom;
+
+  const currentPomBps = useMemo(() => {
+    if (pom?.pom_profit_bps) return Number(pom.pom_profit_bps);
+    if (signal?.pom_profit_bps) return Number(signal.pom_profit_bps);
+    if (activeMarket?.pom_profit_bps) return Number(activeMarket.pom_profit_bps);
+    return 1000;
+  }, [activeMarket?.pom_profit_bps, pom?.pom_profit_bps, signal?.pom_profit_bps]);
+
+  const projectedProfit = useMemo(() => {
+    const numericStake = Number(stake || '0');
+    return numericStake * (currentPomBps / 10_000);
+  }, [currentPomBps, stake]);
+
+  const handleTrade = async (direction: BitdrumDirection) => {
+    if (!authenticated || !user) {
+      setError('Login with Privy to trade.');
+      return;
+    }
+
+    if (!stake || Number(stake) <= 0 || Number.isNaN(Number(stake))) {
+      setError('Enter a valid STRK stake.');
+      return;
+    }
+
+    setError(null);
+    setStatusMessage(null);
+    setIsPending(true);
 
     try {
-        // 1. Fetch Pyth Price Update (Pull Pattern)
-        const hermes = new HermesClient(HERMES_URL, {});
-        // Request binary VAA data
-        const updates = await hermes.getLatestPriceUpdates([BTC_PRICE_ID]);
-        
-        if (!updates || !updates.binary || updates.binary.data.length === 0) {
-            throw new Error("Failed to fetch Pyth price update");
+      if (mode === 'open') {
+        const pomResponse = await fetch(
+          `${API_BASE}/pom/preview?direction=${direction}&stake=${stake}`,
+        );
+        if (!pomResponse.ok) {
+          throw new Error('Unable to fetch dynamic POM quote');
         }
 
-        // Convert VAA to Starknet ByteBuffer format
-        const vaaBase64 = updates.binary.data[0];
-        const pythUpdate = ByteBuffer.fromBase64(vaaBase64);
+        const pomPayload = await pomResponse.json();
+        const pomProfitBps = Number(pomPayload?.pom?.pom_profit_bps || currentPomBps);
 
-        // 2. Construct Multi-call
-        const txCalls = [
-          // A. Update Pyth Oracle State
-          {
-            contractAddress: PYTH_CONTRACT_ADDRESS,
-            entrypoint: 'update_price_feeds',
-            calldata: pythUpdate.toCalldata()
-          },
-          // B. Approve sBTC usage
-          {
-            contractAddress: SBTC_ADDRESS,
-            entrypoint: 'approve',
-            calldata: [PREDICTION_MARKET_ADDRESS, amountBigInt.toString(), "0"]
-          },
-          // C. Open Market on Protocol
-          {
-            contractAddress: PREDICTION_MARKET_ADDRESS,
-            entrypoint: 'open_market',
-            calldata: [directionEnum.toString(), durationSeconds.toString(), amountBigInt.toString(), "0"]
-          }
-        ];
+        await openMarket({
+          getAccessToken,
+          direction,
+          stake,
+          pomProfitBps,
+        });
 
-        console.log("Submitting multicall with Pyth Update...");
-        await send(txCalls);
-    } catch (e: any) {
-        console.error("Trade Execution Error:", e);
-        alert(`Execution failed: ${e.message}`);
+        setStatusMessage(`Opened a ${direction} market.`);
+      } else if (activeMarket?.id) {
+        await joinMarket({
+          getAccessToken,
+          marketId: activeMarket.id,
+          direction,
+          stake,
+        });
+
+        setStatusMessage(`Joined market #${activeMarket.id} ${direction}.`);
+        onClearSelection?.();
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feed'] }),
+        queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['positions'] }),
+        queryClient.invalidateQueries({ queryKey: ['market-detail'] }),
+      ]);
+    } catch (caughtError: any) {
+      setError(caughtError?.message || 'Trade execution failed');
+    } finally {
+      setIsPending(false);
     }
   };
 
   return (
-    <div className="glass-morphism flex flex-col gap-6">
-      <div className="flex items-center gap-2 mb-2">
-        <div className="p-2 bg-orange-500/20 rounded-lg">
-          <ShieldCheck className="w-5 h-5 text-orange-500" />
+    <div className="glass-morphism flex flex-col gap-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl bg-orange-500/20 p-2.5">
+            <ShieldCheck className="h-5 w-5 text-orange-400" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold uppercase italic tracking-tight text-white">
+              {mode === 'open' ? 'Execution Engine' : `Join Market #${activeMarket?.id}`}
+            </h3>
+            <p className="mt-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+              <Zap className="h-3 w-3 text-orange-400" />
+              AI Signal + Dynamic POM
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col">
-            <h3 className="text-xl font-bold text-white uppercase italic tracking-tighter">Execution Engine</h3>
-            <span className="text-[8px] text-gray-500 font-bold tracking-widest flex items-center gap-1">
-                <Zap className="w-2 h-2 text-orange-500" /> POWERED BY PYTH & STARKZAP
+
+        {mode === 'join' ? (
+          <button
+            onClick={onClearSelection}
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300 transition hover:border-white/20"
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Back
+          </button>
+        ) : null}
+      </div>
+
+      {mode === 'join' && activeMarket ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+              Live Pool
             </span>
+            <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.22em] text-orange-200">
+              {activeMarket.state}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs text-slate-300">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Long Pool</p>
+              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.long_pool)} STRK</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Short Pool</p>
+              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.short_pool)} STRK</p>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-xs text-gray-400 uppercase tracking-widest">Stake (sBTC)</label>
-        <div className="relative">
-          <input
-            type="number"
-            value={stake}
-            onChange={(e) => setStake(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500/50 transition-all font-mono"
-            placeholder="0.00"
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-orange-500">MAX</div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-xs text-gray-400 uppercase tracking-widest">Duration</label>
-        <div className="grid grid-cols-4 gap-2">
-          {['30s', '1m', '5m', '15m'].map((d) => (
+      ) : (
+        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+          {(['UP', 'DOWN'] as BitdrumDirection[]).map((direction) => (
             <button
-              key={d}
-              onClick={() => setDuration(d)}
-              className={`py-2 rounded-lg text-xs font-bold border transition-all ${
-                duration === d 
-                  ? 'border-orange-500 bg-orange-500/10 text-orange-500' 
-                  : 'border-white/10 bg-white/5 text-gray-400 hover:border-white/20'
+              key={direction}
+              onClick={() => setPreviewDirection(direction)}
+              className={`rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-[0.28em] transition ${
+                previewDirection === direction
+                  ? 'bg-orange-500/10 text-orange-200'
+                  : 'text-slate-400 hover:bg-white/5'
               }`}
             >
-              {d}
+              Preview {direction}
             </button>
           ))}
         </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <label className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+          Stake (STRK)
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={stake}
+          onChange={(event) => setStake(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-white outline-none transition focus:border-orange-500/40"
+          placeholder="0.00"
+        />
       </div>
 
-      {error ? <div className="text-red-500 text-xs text-center border p-2 border-red-500/20 bg-red-500/5 rounded-lg">{error.message}</div> : null}
+      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-orange-300" />
+            <span className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+              Signal Layer
+            </span>
+          </div>
+          <span
+            className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] ${signalTone(
+              signal?.direction || 'NEUTRAL',
+            )}`}
+          >
+            {signal?.direction || 'LOADING'}
+          </span>
+        </div>
 
-      <div className="grid grid-cols-2 gap-4 mt-2">
-        <button 
-            disabled={isPending || !address}
-            onClick={() => handleTrade(1)} // 1 = UP
-            className="flex flex-col items-center justify-center gap-2 bg-green-500/80 hover:bg-green-500 disabled:opacity-50 py-4 rounded-2xl transition-all group overflow-hidden relative cursor-pointer shadow-lg shadow-green-500/10"
-        >
-            {isPending ? <Loader2 className="w-6 h-6 text-white animate-spin" /> : <TrendingUp className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />}
-            <span className="font-bold text-white uppercase tracking-tighter">UP</span>
-        </button>
-        <button 
-            disabled={isPending || !address}
-            onClick={() => handleTrade(2)} // 2 = DOWN
-            className="flex flex-col items-center justify-center gap-2 bg-red-500/80 hover:bg-red-500 disabled:opacity-50 py-4 rounded-2xl transition-all group overflow-hidden relative cursor-pointer shadow-lg shadow-red-500/10"
-        >
-             {isPending ? <Loader2 className="w-6 h-6 text-white animate-spin" /> : <TrendingDown className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />}
-            <span className="font-bold text-white uppercase tracking-tighter">DOWN</span>
-        </button>
+        <p className="text-sm leading-relaxed text-slate-300">
+          {signalQuery.isLoading
+            ? 'Synthesizing rationale from the latest protocol context.'
+            : signal?.rationale || 'Waiting for the AI agent to return a rationale.'}
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-400">
+          <div>
+            Confidence
+            <div className="mt-1 font-mono text-white">{signal?.confidence ?? '--'}%</div>
+          </div>
+          <div>
+            POM
+            <div className="mt-1 font-mono text-white">{(currentPomBps / 100).toFixed(2)}%</div>
+          </div>
+        </div>
       </div>
 
-      <div className="mt-4 p-4 border border-white/5 bg-white/5 rounded-xl flex flex-col gap-2">
-         <div className="flex justify-between text-[10px] uppercase font-bold text-gray-500">
-            <span>Protocol Efficiency</span>
-            <span className="text-green-400 tracking-normal">+85.4%</span>
-         </div>
-         <div className="flex justify-between text-[10px] uppercase font-bold text-gray-500">
-            <span>Oracle Consistency</span>
-            <span className="text-orange-500 tracking-normal">Pyth Network</span>
-         </div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
+          <span>Projected Profit</span>
+          <span className="text-emerald-300">+{projectedProfit.toFixed(3)} STRK</span>
+        </div>
+        <div className="text-xs text-slate-400">
+          If the trade settles in your favour at {(currentPomBps / 100).toFixed(2)}%, your
+          payout estimate is {(Number(stake || '0') + projectedProfit).toFixed(3)} STRK.
+        </div>
+      </div>
+
+      {statusMessage ? (
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-200">
+          {statusMessage}
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-200">
+          {error}
+        </div>
+      ) : null}
+
+      {!authenticated ? (
+        <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-3 text-[10px] font-black uppercase tracking-[0.28em] text-orange-200">
+          Login with Privy to trade and claim markets.
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          disabled={isPending || (mode === 'join' && activeMarket?.state !== 'OPEN')}
+          onClick={() => handleTrade('UP')}
+          className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500/80 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <TrendingUp className="h-5 w-5" />}
+          UP
+        </button>
+        <button
+          disabled={isPending || (mode === 'join' && activeMarket?.state !== 'OPEN')}
+          onClick={() => handleTrade('DOWN')}
+          className="flex items-center justify-center gap-2 rounded-2xl bg-rose-500/80 px-4 py-4 text-sm font-black uppercase tracking-[0.2em] text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <TrendingDown className="h-5 w-5" />}
+          DOWN
+        </button>
       </div>
     </div>
   );

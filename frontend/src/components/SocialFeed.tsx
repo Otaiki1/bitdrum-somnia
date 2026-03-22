@@ -1,106 +1,376 @@
 'use client';
 
-import React from 'react';
-import { Activity, Trophy, Users } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Activity, ArrowUpRight, Radio, Trophy, UserPlus } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { API_BASE, WS_URL } from '../utils/starkzap';
+import { formatTokenAmount, shortAddress, type MarketRecord } from '../utils/bitdrum';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+type FeedItem = {
+  market_id: string;
+  participant_address: string;
+  action: 'OPENED' | 'JOINED';
+  direction: string;
+  stake_amount: string;
+  timestamp: string;
+  tier: string;
+  long_pool: string;
+  short_pool: string;
+  state: string;
+  pom_profit_bps: number;
+  signal: {
+    direction: string;
+    confidence: number;
+    rationale: string;
+  } | null;
+};
 
-export const MarketFeed = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['markets'],
+function tierTone(tier: string) {
+  if (tier === 'ORACLE') return 'border-amber-400/30 bg-amber-400/10 text-amber-200';
+  if (tier === 'PROPHET') return 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200';
+  if (tier === 'TRADER') return 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200';
+  return 'border-white/10 bg-white/5 text-slate-300';
+}
+
+function directionTone(direction: string) {
+  return direction.toUpperCase() === 'LONG' || direction.toUpperCase() === 'UP'
+    ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+    : 'bg-rose-500/10 text-rose-300 border-rose-500/20';
+}
+
+export const MarketFeed = ({
+  viewerAddress,
+  selectedMarketId,
+  onJoinMarket,
+}: {
+  viewerAddress?: string;
+  selectedMarketId?: string | null;
+  onJoinMarket?: (market: MarketRecord) => void;
+}) => {
+  const queryClient = useQueryClient();
+  const [feedType, setFeedType] = useState<'following' | 'oracle' | 'trending'>(
+    viewerAddress ? 'following' : 'oracle',
+  );
+  const [followAddress, setFollowAddress] = useState('');
+  const [followStatus, setFollowStatus] = useState<string | null>(null);
+  const [liveFeed, setLiveFeed] = useState<FeedItem[] | null>(null);
+
+  useEffect(() => {
+    if (!viewerAddress && feedType === 'following') {
+      setFeedType('oracle');
+    }
+  }, [feedType, viewerAddress]);
+
+  const queryKey = useMemo(
+    () => ['feed', feedType, viewerAddress ?? 'anonymous'],
+    [feedType, viewerAddress],
+  );
+
+  const feedQuery = useQuery({
+    queryKey,
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/markets`);
-      if (!res.ok) throw new Error('Network response was not ok');
-      return res.json();
+      const params = new URLSearchParams({ type: feedType });
+      if (viewerAddress) {
+        params.set('address', viewerAddress);
+      }
+
+      const response = await fetch(`${API_BASE}/feed?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to load social feed');
+      }
+
+      return response.json();
     },
-    refetchInterval: 5000, // Poll every 5s for live effect
+    refetchInterval: 15_000,
   });
 
-  const markets = data?.markets || [];
+  useEffect(() => {
+    const params = new URLSearchParams({
+      channel: 'feed',
+      type: feedType,
+    });
+    if (viewerAddress) {
+      params.set('address', viewerAddress);
+    }
+
+    const socket = new WebSocket(`${WS_URL}?${params.toString()}`);
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data?.payload?.feed) {
+        setLiveFeed(data.payload.feed);
+      }
+    };
+
+    socket.onerror = () => setLiveFeed(null);
+
+    return () => socket.close();
+  }, [feedType, viewerAddress]);
+
+  const feed: FeedItem[] = liveFeed ?? feedQuery.data?.feed ?? [];
+
+  const handleFollow = async () => {
+    if (!viewerAddress || !followAddress) {
+      return;
+    }
+
+    setFollowStatus(null);
+
+    const response = await fetch(`${API_BASE}/follow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        followerAddress: viewerAddress,
+        followingAddress: followAddress,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setFollowStatus(payload.error || 'Unable to follow trader');
+      return;
+    }
+
+    setFollowAddress('');
+    setFollowStatus('Following wallet');
+    queryClient.invalidateQueries({ queryKey });
+  };
 
   return (
     <div className="glass-morphism flex flex-col gap-4">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-orange-500" />
-            <h3 className="text-lg font-bold text-white uppercase tracking-tight">Live Activity</h3>
+          <Activity className="h-5 w-5 text-orange-400" />
+          <div>
+            <h3 className="text-lg font-bold uppercase tracking-tight text-white">Live Activity</h3>
+            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-500">
+              Social Flow
+            </p>
+          </div>
         </div>
-        <span className="flex items-center gap-1 text-[10px] text-orange-500/80 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
-            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
-            LIVE
+        <span className="inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">
+          <Radio className="h-3 w-3" />
+          WebSocket
         </span>
       </div>
 
-      <div className="flex flex-col gap-3 min-h-[150px]">
-        {isLoading ? (
-          <div className="text-xs text-center text-gray-500 mt-4 animate-pulse">Scanning Starknet...</div>
-        ) : markets.length === 0 ? (
-          <div className="text-xs text-center text-gray-500 mt-4">No active markets found</div>
+      <div className="grid grid-cols-3 gap-2">
+        {(['following', 'oracle', 'trending'] as const).map((type) => (
+          <button
+            key={type}
+            onClick={() => setFeedType(type)}
+            disabled={type === 'following' && !viewerAddress}
+            className={`rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.25em] transition-all ${
+              feedType === type
+                ? 'border-orange-500/50 bg-orange-500/10 text-orange-200'
+                : 'border-white/10 bg-white/5 text-slate-400 hover:border-white/20'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            {type}
+          </button>
+        ))}
+      </div>
+
+      {viewerAddress ? (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+            <UserPlus className="h-3 w-3 text-orange-400" />
+            Follow Wallet
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={followAddress}
+              onChange={(event) => setFollowAddress(event.target.value)}
+              placeholder="0xabc...def"
+              className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none transition focus:border-orange-500/40"
+            />
+            <button
+              onClick={handleFollow}
+              className="rounded-xl border border-orange-500/40 bg-orange-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-200 transition hover:bg-orange-500/20"
+            >
+              Follow
+            </button>
+          </div>
+          {followStatus ? <p className="mt-2 text-[10px] text-slate-400">{followStatus}</p> : null}
+        </div>
+      ) : null}
+
+      <div className="flex min-h-[220px] flex-col gap-3">
+        {feedQuery.isLoading && !feed.length ? (
+          <div className="mt-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
+            Reading protocol flow
+          </div>
+        ) : feed.length === 0 ? (
+          <div className="mt-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
+            No activity in this lane
+          </div>
         ) : (
-          markets.map((item: any) => (
-            <div key={item.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-white/10 transition-all">
-              <div className="flex flex-col">
-                <span className="text-xs text-gray-400 font-mono italic">Market #{item.id}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-white">Strike: {Number(item.strike_price) / 1e8}</span>
-                  <span className="text-[10px] bg-white/10 px-2 rounded-md">{item.state == 1 ? 'OPEN' : item.state == 2 ? 'LOCKED' : 'SETTLED'}</span>
+          feed.map((item) => (
+            <article
+              key={`${item.market_id}-${item.participant_address}-${item.timestamp}`}
+              className={`rounded-2xl border p-4 transition ${
+                selectedMarketId === item.market_id
+                  ? 'border-orange-500/40 bg-orange-500/10'
+                  : 'border-white/10 bg-white/5 hover:border-white/20'
+              }`}
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.24em] ${tierTone(
+                        item.tier,
+                      )}`}
+                    >
+                      {item.tier}
+                    </span>
+                    <span className="text-xs font-mono text-slate-300">
+                      {shortAddress(item.participant_address)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {item.action === 'OPENED' ? 'Opened' : 'Joined'} market #{item.market_id}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] ${directionTone(
+                    item.direction,
+                  )}`}
+                >
+                  {item.direction.toUpperCase() === 'LONG' ? 'UP' : 'DOWN'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                <div>
+                  Stake
+                  <div className="mt-1 font-mono text-white">{formatTokenAmount(item.stake_amount)} STRK</div>
+                </div>
+                <div>
+                  Pool
+                  <div className="mt-1 font-mono text-white">
+                    {formatTokenAmount(item.long_pool)} / {formatTokenAmount(item.short_pool)}
+                  </div>
                 </div>
               </div>
-              <div className={`px-3 py-1 rounded-lg font-bold text-xs ${item.direction === 1 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
-                {item.direction === 1 ? 'UP' : 'DOWN'}
+
+              {item.signal ? (
+                <p className="mt-3 text-xs leading-relaxed text-slate-300">
+                  AI: {item.signal.direction} ({item.signal.confidence}%)
+                </p>
+              ) : null}
+
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
+                  {item.state}
+                </span>
+                <button
+                  disabled={item.state !== 'OPEN'}
+                  onClick={() =>
+                    onJoinMarket?.({
+                      id: item.market_id,
+                      state: item.state,
+                      long_pool: item.long_pool,
+                      short_pool: item.short_pool,
+                      pom_profit_bps: item.pom_profit_bps,
+                      signal: item.signal,
+                    })
+                  }
+                  className="inline-flex items-center gap-2 rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                >
+                  Join
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
               </div>
-            </div>
+            </article>
           ))
         )}
       </div>
-
-      <button className="mt-2 text-center text-xs text-orange-500 hover:text-orange-400 transition-colors py-2 border-t border-white/5">
-        View All Markets
-      </button>
     </div>
   );
 };
 
 export const LeaderboardCard = () => {
-    const { data, isLoading } = useQuery({
-      queryKey: ['leaderboard'],
-      queryFn: async () => {
-        const res = await fetch(`${API_BASE}/leaderboard`);
-        if (!res.ok) throw new Error('Network response was not ok');
-        return res.json();
-      },
-      refetchInterval: 10000, // Poll every 10s
-    });
+  const [liveRankings, setLiveRankings] = useState<any[] | null>(null);
 
-    const rankings = data?.rankings || [];
+  const leaderboardQuery = useQuery({
+    queryKey: ['leaderboard'],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/leaderboard`);
+      if (!response.ok) {
+        throw new Error('Failed to load leaderboard');
+      }
 
-    return (
-        <div className="glass-morphism mt-4">
-            <div className="flex items-center gap-2 mb-4">
-                <Trophy className="w-5 h-5 text-yellow-500" />
-                <h3 className="text-lg font-bold text-white uppercase tracking-tight">Top Oracles</h3>
-            </div>
-            <div className="flex flex-col gap-3 min-h-[120px]">
-                {isLoading ? (
-                    <div className="text-xs text-center text-gray-500 mt-4 animate-pulse">Fetching ranks...</div>
-                ) : rankings.length === 0 ? (
-                    <div className="text-xs text-center text-gray-500 mt-4">No ranked traders yet</div>
-                ) : (
-                  rankings.map((trader: any, idx: number) => (
-                      <div key={trader.address} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                          <div className="flex items-center gap-3">
-                              <span className="text-lg font-black text-gray-600">#{idx + 1}</span>
-                              <span className="text-sm font-bold text-white font-mono">{trader.address.slice(0,6)}...{trader.address.slice(-4)}</span>
-                          </div>
-                          <div className="flex flex-col items-end">
-                              <span className="text-xs text-orange-400 font-bold">{trader.tier}</span>
-                              <span className="text-[10px] text-gray-500">Rep: {trader.score}</span>
-                          </div>
-                      </div>
-                  ))
-                )}
-            </div>
+      return response.json();
+    },
+    refetchInterval: 20_000,
+  });
+
+  useEffect(() => {
+    const socket = new WebSocket(`${WS_URL}?channel=leaderboard`);
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data?.payload?.rankings) {
+        setLiveRankings(data.payload.rankings);
+      }
+    };
+
+    socket.onerror = () => setLiveRankings(null);
+
+    return () => socket.close();
+  }, []);
+
+  const rankings = liveRankings ?? leaderboardQuery.data?.rankings ?? [];
+
+  return (
+    <div className="glass-morphism mt-4">
+      <div className="mb-4 flex items-center gap-2">
+        <Trophy className="h-5 w-5 text-amber-300" />
+        <div>
+          <h3 className="text-lg font-bold uppercase tracking-tight text-white">Leaderboard</h3>
+          <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-500">
+            Reputation Tiers
+          </p>
         </div>
-    )
-}
+      </div>
+
+      <div className="flex min-h-[180px] flex-col gap-3">
+        {leaderboardQuery.isLoading && !rankings.length ? (
+          <div className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
+            Computing tiers
+          </div>
+        ) : rankings.length === 0 ? (
+          <div className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
+            No ranked traders yet
+          </div>
+        ) : (
+          rankings.slice(0, 5).map((trader: any, index: number) => (
+            <div
+              key={trader.address}
+              className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-black text-slate-600">#{index + 1}</span>
+                <div>
+                  <p className="font-mono text-sm text-white">{shortAddress(trader.address)}</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                    Win rate {(Number(trader.win_rate || 0) * 100).toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span
+                  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.22em] ${tierTone(
+                    trader.tier,
+                  )}`}
+                >
+                  {trader.tier}
+                </span>
+                <p className="mt-2 text-[11px] text-slate-400">Score {trader.score}</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
