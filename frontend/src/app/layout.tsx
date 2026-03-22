@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Next-generation decentralized prediction protocol on Starknet.",
 };
 
+import { Providers } from "@/components/Providers";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -14,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased min-h-screen bg-[#0a0a0a]">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );
