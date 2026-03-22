@@ -58,10 +58,13 @@ pub mod SettlementEngine {
         StoragePointerReadAccess, StoragePointerWriteAccess,
         Map, StorageMapReadAccess, StorageMapWriteAccess,
     };
-    use super::{PragmaPricesResponse, DataType};
+    use super::{
+        PragmaPricesResponse, DataType,
+        IPragmaABIDispatcher, IPragmaABIDispatcherTrait,
+    };
     use super::super::types::{
         MarketState, Direction,
-        ATTESTATION_MAX_AGE, PROTOCOL_FEE_BPS, BPS_SCALE,
+        ATTESTATION_MAX_AGE, PROTOCOL_FEE_BPS, BPS_SCALE, BTC_USD_PAIR_ID,
     };
     use super::super::prediction_market::{
         IPredictionMarketDispatcher, IPredictionMarketDispatcherTrait,
@@ -137,12 +140,10 @@ pub mod SettlementEngine {
             // Guard: already settled?
             assert(!self.settled_markets.read(market_id), 'Already settled');
 
-            // ── 1. Use BTC/USD price from provided response ─────────────────
-            // (In a production contract, we would also verify the Pragma signature here
-            // if we weren't relying on the dispatcher/proxy behavior).
-            
-            let settlement_price = price_response.price;
-            let price_timestamp = price_response.last_updated_timestamp;
+            // ── 1. Validate keeper payload against configured oracle ────────
+            let verified_response = self._verify_price_response(price_response);
+            let settlement_price = verified_response.price;
+            let price_timestamp = verified_response.last_updated_timestamp;
 
             // ── 2. Freshness check ─────────────────────────────────────────
             let now = get_block_timestamp();
@@ -250,6 +251,34 @@ pub mod SettlementEngine {
     impl InternalImpl of InternalTrait {
         fn _only_owner(ref self: ContractState) {
             assert(get_caller_address() == self.owner.read(), 'Only owner');
+        }
+
+        fn _verify_price_response(
+            self: @ContractState, price_response: PragmaPricesResponse,
+        ) -> PragmaPricesResponse {
+            let oracle = IPragmaABIDispatcher {
+                contract_address: self.pragma_oracle.read(),
+            };
+            let oracle_response = oracle.get_data_median(DataType::SpotEntry(BTC_USD_PAIR_ID));
+
+            assert(oracle_response.price > 0, 'Oracle price missing');
+            assert(oracle_response.decimals == 8, 'Unexpected oracle decimals');
+            assert(oracle_response.num_sources_aggregated > 0, 'Oracle sources missing');
+
+            // The keeper still submits the attestation payload, but the contract only accepts
+            // it if it matches the trusted oracle response for BTC/USD exactly.
+            assert(price_response.price == oracle_response.price, 'Oracle response mismatch');
+            assert(
+                price_response.last_updated_timestamp == oracle_response.last_updated_timestamp,
+                'Oracle timestamp mismatch',
+            );
+            assert(price_response.decimals == oracle_response.decimals, 'Oracle decimals mismatch');
+            assert(
+                price_response.num_sources_aggregated == oracle_response.num_sources_aggregated,
+                'Oracle sources mismatch',
+            );
+
+            oracle_response
         }
     }
 }

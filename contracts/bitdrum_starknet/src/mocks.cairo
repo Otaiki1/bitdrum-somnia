@@ -164,3 +164,47 @@ pub mod MockPredictionMarket {
         }
     }
 }
+
+#[starknet::contract]
+pub mod MockPragmaOracle {
+    use bitdrum_starknet::settlement_engine::{DataType, IPragmaABI, PragmaPricesResponse};
+    use starknet::storage::{
+        StoragePointerReadAccess, StoragePointerWriteAccess,
+    };
+
+    #[storage]
+    struct Storage {
+        price: u128,
+        decimals: u32,
+        last_updated_timestamp: u64,
+        num_sources_aggregated: u32,
+    }
+
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        price: u128,
+        last_updated_timestamp: u64,
+        decimals: u32,
+        num_sources_aggregated: u32,
+    ) {
+        self.price.write(price);
+        self.decimals.write(decimals);
+        self.last_updated_timestamp.write(last_updated_timestamp);
+        self.num_sources_aggregated.write(num_sources_aggregated);
+    }
+
+    #[abi(embed_v0)]
+    impl MockPragmaOracleImpl of IPragmaABI<ContractState> {
+        fn get_data_median(self: @ContractState, data_type: DataType) -> PragmaPricesResponse {
+            let _ = data_type;
+            PragmaPricesResponse {
+                price: self.price.read(),
+                decimals: self.decimals.read(),
+                last_updated_timestamp: self.last_updated_timestamp.read(),
+                num_sources_aggregated: self.num_sources_aggregated.read(),
+                expiration_timestamp: Option::None,
+            }
+        }
+    }
+}
