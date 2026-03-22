@@ -8,6 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { aiSignals, markets, stakes, traders } from "../lib/schema.js";
 
 const db = drizzle({
+  type: "node-postgres",
   schema: { markets, stakes, traders, aiSignals },
 });
 
