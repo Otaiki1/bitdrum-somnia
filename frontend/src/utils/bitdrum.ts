@@ -1,5 +1,5 @@
-import { accountPresets, OnboardStrategy } from "starkzap";
-import { GATEWAY_URL, hasSponsoredExecution, sdk } from "./starkzap";
+import type Controller from "@cartridge/controller";
+import { CARTRIDGE_PRESET, CARTRIDGE_URL, hasSponsoredExecution, sdk } from "./starkzap";
 
 export const STRK_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
@@ -45,6 +45,12 @@ export type PositionRecord = {
   can_claim: boolean;
 };
 
+type StarkZapCartridgeWallet = Awaited<ReturnType<typeof sdk.connectCartridge>>;
+
+export type BitdrumWallet = Omit<StarkZapCartridgeWallet, "getController"> & {
+  getController(): Controller;
+};
+
 function directionToEnum(direction: BitdrumDirection) {
   return direction === "UP" ? "1" : "2";
 }
@@ -53,39 +59,20 @@ function getExecutionOptions() {
   return hasSponsoredExecution ? { feeMode: "sponsored" as const } : undefined;
 }
 
-async function fetchPrivyWallet(accessToken: string | null, path: "starknet" | "sign") {
-  const response = await fetch(`${GATEWAY_URL}/${path}`, {
-    method: "POST",
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+export async function connectBitdrumWallet(): Promise<BitdrumWallet> {
+  const wallet = await sdk.connectCartridge({
+    ...(CARTRIDGE_URL ? { url: CARTRIDGE_URL } : {}),
+    ...(CARTRIDGE_PRESET ? { preset: CARTRIDGE_PRESET } : {}),
+    ...(getExecutionOptions() ?? {}),
   });
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || "Failed to initialize Starkzap wallet");
-  }
-
-  return response.json();
+  return wallet as BitdrumWallet;
 }
 
-export async function getBitdrumWallet(getAccessToken: () => Promise<string | null>) {
-  const accessToken = await getAccessToken();
-
-  return sdk.onboard({
-    strategy: OnboardStrategy.Privy,
-    accountPreset: accountPresets.argentXV050,
-    privy: {
-      resolve: async () => {
-        const data = await fetchPrivyWallet(accessToken, "starknet");
-        return {
-          walletId: data.wallet.id,
-          publicKey: data.wallet.publicKey,
-          serverUrl: `${GATEWAY_URL}/sign`,
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-        };
-      },
-    },
-    feeMode: hasSponsoredExecution ? "sponsored" : "user_pays",
+async function ensureWalletReady(wallet: BitdrumWallet) {
+  await wallet.ensureReady({
     deploy: "if_needed",
+    ...(getExecutionOptions() ?? {}),
   });
 }
 
@@ -102,14 +89,15 @@ async function approveSpend(amount: string) {
 }
 
 export async function openMarket(params: {
-  getAccessToken: () => Promise<string | null>;
+  wallet: BitdrumWallet;
   direction: BitdrumDirection;
   stake: string;
   pomProfitBps: number;
 }) {
-  const onboard = await getBitdrumWallet(params.getAccessToken);
-  const wallet = onboard.wallet;
+  const wallet = params.wallet;
   const amount = toTokenBaseUnits(params.stake);
+
+  await ensureWalletReady(wallet);
 
   const tx = await wallet.execute(
     [
@@ -128,14 +116,15 @@ export async function openMarket(params: {
 }
 
 export async function joinMarket(params: {
-  getAccessToken: () => Promise<string | null>;
+  wallet: BitdrumWallet;
   marketId: string;
   direction: BitdrumDirection;
   stake: string;
 }) {
-  const onboard = await getBitdrumWallet(params.getAccessToken);
-  const wallet = onboard.wallet;
+  const wallet = params.wallet;
   const amount = toTokenBaseUnits(params.stake);
+
+  await ensureWalletReady(wallet);
 
   const tx = await wallet.execute(
     [
@@ -154,11 +143,12 @@ export async function joinMarket(params: {
 }
 
 export async function claimMarket(params: {
-  getAccessToken: () => Promise<string | null>;
+  wallet: BitdrumWallet;
   marketId: string;
 }) {
-  const onboard = await getBitdrumWallet(params.getAccessToken);
-  const wallet = onboard.wallet;
+  const wallet = params.wallet;
+
+  await ensureWalletReady(wallet);
 
   const tx = await wallet.execute(
     [

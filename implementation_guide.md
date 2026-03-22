@@ -75,7 +75,7 @@ This guide provides a step-by-step roadmap for executing the BitDrum project wit
 - Set up Tailwind CSS and shadcn/ui for a modern "Glassmorphism" aesthetic.
 
 ### 4.2 Starkzap Integration
-- Implement **Authentication** via Privy (Social/Email login).
+- Implement **Authentication** via Cartridge Controller (social login and passkeys).
 - Integrate **Token Operations** for sBTC staking and balance checks.
 - Set up **AVNU Paymaster** for gasless (pay-in-sBTC) transactions.
 
@@ -92,7 +92,7 @@ This guide provides a step-by-step roadmap for executing the BitDrum project wit
 
 ### 5.1 End-to-End Testing
 - Deploy all components to **Starknet Sepolia**.
-- Perform full user flow testing (Social Login -> Deposit -> Stake -> Settle -> Claim).
+- Perform full user flow testing (Controller Login -> Deposit -> Stake -> Settle -> Claim).
 
 ### 5.2 Deployment
 - Containerize all services using **Docker**.

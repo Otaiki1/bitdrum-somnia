@@ -805,18 +805,19 @@ BitDrum is built on **Starknet** and uses the **Starkzap TypeScript SDK** for al
 
 Starkzap handles all wallet interaction, transaction construction, and token operations. The frontend never talks to raw Starknet RPCs.
 
-**Authentication (via Privy + Starkzap):**
+**Authentication (via Cartridge + Starkzap):**
 ```typescript
-import { StarkZap } from '@starkzap/sdk';
-import { PrivySigner } from '@starkzap/privy';
+import { StarkZap } from 'starkzap';
 
 const zap = new StarkZap({
-  network: 'mainnet',
-  signer: new PrivySigner({ appId: process.env.PRIVY_APP_ID }),
+  network: 'sepolia',
 });
 
-// User signs in with email or Google — no seed phrase required
-const wallet = await zap.wallet.connect();
+const wallet = await zap.connectCartridge({
+  preset: process.env.NEXT_PUBLIC_CARTRIDGE_PRESET,
+});
+
+await wallet.ensureReady({ deploy: 'if_needed' });
 ```
 
 **Opening a market:**
@@ -851,10 +852,9 @@ const balance = await zap.tokens.erc20.balance({
 
 | Wallet Type | Auth Method | Best For |
 |---|---|---|
-| **Privy Embedded** | Email, Google, Twitter | New users — no crypto experience required |
-| **Cartridge Controller** | Google, Face ID, Touch ID | Gaming-oriented users — gasless by default |
-| **Argent** | Seed phrase or biometrics | Existing Starknet users |
-| **Braavos** | Seed phrase or biometrics | Existing Starknet users |
+| **Cartridge Controller** | Google, passkeys, device biometrics | Default BitDrum onboarding with guided approvals |
+| **Argent** | Seed phrase or biometrics | Future expansion for existing Starknet users |
+| **Braavos** | Seed phrase or biometrics | Future expansion for existing Starknet users |
 
 ### 9.4 Gasless Transactions (AVNU Paymaster)
 
@@ -880,10 +880,10 @@ const zap = new StarkZap({
 ```
 1. Opens BitDrum web or mobile app
 
-2. Clicks "Get Started"
-   → Privy modal appears
-   → Signs in with Google (no wallet setup, no seed phrase)
-   → Embedded wallet created automatically in background
+2. Clicks "Connect Cartridge"
+   → Cartridge Controller modal appears
+   → Signs in with Google or a passkey
+   → Controller wallet is connected and deployed if needed
 
 3. Sees tutorial overlay:
    → "Deposit sBTC to start trading"
@@ -1201,8 +1201,8 @@ Anyone in the world can trigger settlement on any expired market. The keeper sim
 
 Starkzap leverages Starknet's native account abstraction for security benefits:
 - **Post-condition protection**: Every transaction specifies exactly how funds should move. A mismatched outcome causes automatic rejection before execution.
-- **Session keys (Cartridge)**: Gaming sessions use scoped session keys that cannot access funds beyond what the user approved.
-- **Privy key management**: Privy stores embedded wallet keys server-side with HSM protection — users authenticate via OAuth, Privy signs transactions.
+- **Controller approvals (Cartridge)**: Transactions are approved directly through Cartridge Controller, and optional session keys can later scope repeated actions.
+- **Account deployment safety**: The frontend ensures controller accounts are deployed before trading, preventing partial execution flows for new wallets.
 
 ---
 
@@ -1254,7 +1254,7 @@ Social Indexer WebSocket (/stream/feed)
 
 ### 14.4 Wallet Connection UX
 
-For new users, BitDrum defaults to Privy-powered social login. Experienced users can connect existing Argent or Braavos wallets. The connection flow is handled entirely by Starkzap — the frontend calls a single `zap.wallet.connect()` method.
+BitDrum defaults to Cartridge Controller onboarding. The frontend calls Starkzap's `connectCartridge()` helper, then waits for the controller account to be ready before any trade is submitted. Additional wallet connectors can be added later, but the current production path is Cartridge-only.
 
 ---
 

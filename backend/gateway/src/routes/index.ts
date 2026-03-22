@@ -2,7 +2,6 @@ import { Router } from 'express';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { checkSubscription } from '../middleware/auth';
-import starkzapRouter from './starkzap';
 import { pool } from '../db';
 
 dotenv.config();
@@ -805,6 +804,4 @@ router.post('/internal/ai-signals', async (req, res) => {
 });
 
 // 7. Starkzap Middleware
-router.use('/starkzap', starkzapRouter);
-
 export default router;
