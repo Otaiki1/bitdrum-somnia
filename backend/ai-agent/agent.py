@@ -179,8 +179,8 @@ async def generate_signal(market_id: str) -> Dict[str, Any]:
     return payload
 
 
-async def generate_preview_signal(direction: str, stake: str) -> Dict[str, Any]:
-    context = await fetch_preview_context(direction, stake)
+async def generate_preview_signal(direction: str, stake: str, duration_seconds: int = 300) -> Dict[str, Any]:
+    context = await fetch_preview_context(direction, stake, duration_seconds)
     metrics = build_signal_metrics(context)
     rationale = await maybe_generate_llm_rationale(metrics)
     if not rationale:
@@ -202,8 +202,8 @@ async def generate_pom(market_id: str) -> Dict[str, Any]:
     }
 
 
-async def generate_preview_pom(direction: str, stake: str) -> Dict[str, Any]:
-    context = await fetch_preview_context(direction, stake)
+async def generate_preview_pom(direction: str, stake: str, duration_seconds: int = 300) -> Dict[str, Any]:
+    context = await fetch_preview_context(direction, stake, duration_seconds)
     metrics = build_signal_metrics(context)
     return {
         "market_id": "preview",

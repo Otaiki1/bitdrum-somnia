@@ -19,6 +19,7 @@ class SignalRequest(BaseModel):
 class PreviewSignalRequest(BaseModel):
     direction: str
     stake: str
+    duration_seconds: int = 300
 
 
 @app.get("/health")
@@ -38,7 +39,11 @@ async def get_signal(request: SignalRequest):
 @app.post("/signal/preview")
 async def get_preview_signal(request: PreviewSignalRequest):
     try:
-        signal = await generate_preview_signal(request.direction, request.stake)
+        signal = await generate_preview_signal(
+            request.direction,
+            request.stake,
+            request.duration_seconds,
+        )
         return {"market_id": "preview", "signal": signal}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -57,9 +62,10 @@ async def get_pom(market_id: str):
 async def get_pom_preview(
     direction: str = Query(default="Long"),
     stake: str = Query(default="0"),
+    duration_seconds: int = Query(default=300),
 ):
     try:
-        pom = await generate_preview_pom(direction, stake)
+        pom = await generate_preview_pom(direction, stake, duration_seconds)
         return {"market_id": "preview", "pom": pom}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
