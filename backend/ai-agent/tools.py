@@ -13,11 +13,15 @@ async def fetch_market_context(market_id: str) -> Dict[str, Any]:
         return response.json()
 
 
-async def fetch_preview_context(direction: str, stake: str) -> Dict[str, Any]:
+async def fetch_preview_context(direction: str, stake: str, duration_seconds: int) -> Dict[str, Any]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(
             f"{GATEWAY_URL}/internal/market-context/preview",
-            params={"direction": direction, "stake": stake},
+            params={
+                "direction": direction,
+                "stake": stake,
+                "durationSeconds": duration_seconds,
+            },
         )
         response.raise_for_status()
         return response.json()

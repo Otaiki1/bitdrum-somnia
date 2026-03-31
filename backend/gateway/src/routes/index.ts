@@ -39,6 +39,28 @@ function bigintFromNumeric(value: string | null | undefined) {
   return BigInt(value || '0');
 }
 
+function toUnixSeconds(value: string | Date | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return Math.floor(new Date(value).getTime() / 1000);
+}
+
+function calculateSettlementDeadline(
+  openedAt: string | Date | null | undefined,
+  durationSeconds: number | null | undefined,
+  joinDeadline: number | null | undefined,
+) {
+  const openedAtSeconds = toUnixSeconds(openedAt);
+
+  if (openedAtSeconds && durationSeconds) {
+    return openedAtSeconds + durationSeconds;
+  }
+
+  return joinDeadline ?? null;
+}
+
 function calculateEntitledPayout(stakeAmount: string, pomProfitBps: number, outcome: string | null, direction: string) {
   const stake = bigintFromNumeric(stakeAmount);
 
@@ -228,6 +250,12 @@ async function getMarketContext(marketId: string) {
       outcome: market.outcome,
       join_deadline: market.join_deadline,
       opened_at: market.opened_at,
+      duration_seconds: market.duration_seconds,
+      settlement_deadline: calculateSettlementDeadline(
+        market.opened_at,
+        Number(market.duration_seconds || 0),
+        market.join_deadline,
+      ),
       settled_at: market.settled_at,
     },
     top_trader_alignment: alignment,
@@ -235,7 +263,7 @@ async function getMarketContext(marketId: string) {
   };
 }
 
-async function getPreviewContext(direction: string, stake: string) {
+async function getPreviewContext(direction: string, stake: string, durationSeconds: number) {
   const { rows: marketRows } = await pool.query(
     `
       SELECT long_pool, short_pool
@@ -276,6 +304,8 @@ async function getPreviewContext(direction: string, stake: string) {
     normalizeDirection(direction) === 'Long' ? currentLongPool + previewStake : currentLongPool;
   const projectedShortPool =
     normalizeDirection(direction) === 'Short' ? currentShortPool + previewStake : currentShortPool;
+  const now = Math.floor(Date.now() / 1000);
+  const joinDeadline = now + Math.floor(durationSeconds / 3);
 
   return {
     market: {
@@ -287,8 +317,10 @@ async function getPreviewContext(direction: string, stake: string) {
       entry_price: null,
       settlement_price: null,
       outcome: null,
-      join_deadline: null,
-      opened_at: null,
+      join_deadline: joinDeadline,
+      opened_at: new Date(now * 1000).toISOString(),
+      duration_seconds: durationSeconds,
+      settlement_deadline: now + durationSeconds,
       settled_at: null,
     },
     top_trader_alignment: calculateTraderInfluence(positionRows),
@@ -327,12 +359,19 @@ router.get('/markets', async (_req, res) => {
       settlement_price: row.settlement_price,
       long_pool: row.long_pool,
       short_pool: row.short_pool,
-      pom_profit_bps: row.pom_profit_bps,
-      outcome: row.outcome,
-      join_deadline: row.join_deadline,
-      signal: row.signal_direction
-        ? {
-            direction: row.signal_direction,
+        pom_profit_bps: row.pom_profit_bps,
+        outcome: row.outcome,
+        join_deadline: row.join_deadline,
+        opened_at: row.opened_at,
+        duration_seconds: row.duration_seconds,
+        settlement_deadline: calculateSettlementDeadline(
+          row.opened_at,
+          Number(row.duration_seconds || 0),
+          row.join_deadline,
+        ),
+        signal: row.signal_direction
+          ? {
+              direction: row.signal_direction,
             confidence: row.signal_confidence,
             rationale: row.signal_rationale,
           }
@@ -365,17 +404,28 @@ router.get('/markets/:market_id', async (req, res) => {
 router.get('/signal/preview', checkSubscription, async (req, res) => {
   const direction = String(req.query.direction || 'Long');
   const stake = String(req.query.stake || '0');
+  const durationSeconds = Number(req.query.durationSeconds || 300);
 
   try {
     const response = await axios.post(`${AI_AGENT_URL}/signal/preview`, {
       direction,
       stake,
+      duration_seconds: durationSeconds,
     });
 
     res.json(response.data);
   } catch (error: any) {
-    console.error(`[Gateway] AI preview error: ${error.message}`);
-    res.status(500).json({ error: 'AI Agent unavailable', details: error.message });
+    console.warn(`[Gateway] AI preview unavailable, returning static fallback: ${error.message}`);
+    res.json({
+      signal: {
+        direction: 'NEUTRAL',
+        confidence: 50,
+        rationale: 'AI signal agent is currently unavailable. Proceed with your own analysis.',
+        generated_at: new Date().toISOString(),
+        is_accurate: null,
+      },
+      source: 'static-fallback',
+    });
   }
 });
 
@@ -413,10 +463,11 @@ router.get('/signal/:market_id', checkSubscription, async (req, res) => {
 router.get('/pom/preview', async (req, res) => {
   const direction = String(req.query.direction || 'Long');
   const stake = String(req.query.stake || '0');
+  const durationSeconds = Number(req.query.durationSeconds || 300);
 
   try {
     const response = await axios.get(`${AI_AGENT_URL}/pom-preview`, {
-      params: { direction, stake },
+      params: { direction, stake, duration_seconds: durationSeconds },
     });
     res.json(response.data);
   } catch (error: any) {
@@ -531,8 +582,15 @@ router.get('/positions/:address', async (req, res) => {
         entry_price: row.entry_price,
         settlement_price: row.settlement_price,
         outcome: row.outcome,
+        transaction_hash: row.transaction_hash,
+        duration_seconds: row.duration_seconds ?? 300,
         join_deadline: row.join_deadline,
         opened_at: row.opened_at,
+        settlement_deadline: calculateSettlementDeadline(
+          row.opened_at,
+          Number(row.duration_seconds || 0),
+          row.join_deadline,
+        ),
         settled_at: row.settled_at,
         status,
         can_claim: canClaim,
@@ -669,6 +727,8 @@ router.get('/feed', async (req, res) => {
         m.short_pool,
         m.state,
         m.pom_profit_bps,
+        m.join_deadline,
+        m.opened_at,
         t.tier,
         t.composite_score
       FROM stakes s
@@ -733,6 +793,14 @@ router.get('/feed', async (req, res) => {
         short_pool: row.short_pool,
         state: row.state,
         pom_profit_bps: row.pom_profit_bps,
+        duration_seconds: row.duration_seconds ?? 300,
+        join_deadline: row.join_deadline,
+        opened_at: row.opened_at,
+        settlement_deadline: calculateSettlementDeadline(
+          row.opened_at,
+          Number(row.duration_seconds || 0),
+          row.join_deadline,
+        ),
         signal: signal
           ? {
               direction: signal.direction,
@@ -755,7 +823,8 @@ router.get('/internal/market-context/preview', async (req, res) => {
   try {
     const direction = String(req.query.direction || 'Long');
     const stake = String(req.query.stake || '0');
-    const context = await getPreviewContext(direction, stake);
+    const durationSeconds = Number(req.query.durationSeconds || 300);
+    const context = await getPreviewContext(direction, stake, durationSeconds);
     res.json(context);
   } catch (error: any) {
     console.error('[Gateway] Internal preview context error:', error.message);
