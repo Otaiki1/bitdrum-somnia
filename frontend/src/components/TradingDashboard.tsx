@@ -1,14 +1,167 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, LogOut, Menu, Wallet } from 'lucide-react';
-import { PriceChart } from './PriceChart';
+import { Bell, LogOut, Menu, Wallet, ExternalLink, TrendingUp, TrendingDown, Trophy, X } from 'lucide-react';
+import { PriceChart, type TradeMarker } from './PriceChart';
 import { TradePanel } from './TradePanel';
 import { LeaderboardCard, MarketFeed } from './SocialFeed';
 import { useCartridgeWallet } from './CartridgeWalletProvider';
-import { claimMarket, formatTokenAmount, shortAddress, type MarketRecord } from '../utils/bitdrum';
+import {
+  claimMarket,
+  formatTimeframe,
+  formatTokenAmount,
+  shortAddress,
+  formatOraclePrice,
+  type MarketRecord,
+  type TradeExecutionRecord,
+} from '../utils/bitdrum';
 import { API_BASE } from '../utils/starkzap';
+
+// ─── Win / Lose Modal ───────────────────────────────────────────────────────
+
+function OutcomeModal({
+  outcome,
+  position,
+  onClose,
+}: {
+  outcome: 'WIN' | 'LOSS' | 'DRAW';
+  position: any;
+  onClose: () => void;
+}) {
+  const isWin = outcome === 'WIN';
+  const isDraw = outcome === 'DRAW';
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-lg">
+      {/* Animated glow background */}
+      <div
+        className={`absolute inset-0 pointer-events-none ${
+          isWin
+            ? 'bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.15)_0%,transparent_70%)]'
+            : isDraw
+              ? 'bg-[radial-gradient(ellipse_at_center,rgba(249,115,22,0.12)_0%,transparent_70%)]'
+              : 'bg-[radial-gradient(ellipse_at_center,rgba(244,63,94,0.15)_0%,transparent_70%)]'
+        }`}
+      />
+
+      <div
+        className={`relative w-full max-w-sm overflow-hidden rounded-3xl border p-8 shadow-2xl ${
+          isWin
+            ? 'border-emerald-500/30 bg-[#0a120e]'
+            : isDraw
+              ? 'border-orange-500/20 bg-[#12100a]'
+              : 'border-rose-500/30 bg-[#120a0a]'
+        }`}
+      >
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 transition hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        {/* Icon */}
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <div
+            className={`flex h-20 w-20 items-center justify-center rounded-full border-2 ${
+              isWin
+                ? 'border-emerald-500/40 bg-emerald-500/10'
+                : isDraw
+                  ? 'border-orange-500/30 bg-orange-500/10'
+                  : 'border-rose-500/40 bg-rose-500/10'
+            }`}
+          >
+            {isWin ? (
+              <Trophy className="h-10 w-10 text-emerald-400" />
+            ) : isDraw ? (
+              <span className="text-3xl">🤝</span>
+            ) : (
+              <span className="text-3xl">💸</span>
+            )}
+          </div>
+
+          <div className="text-center">
+            <h2
+              className={`text-3xl font-black uppercase italic tracking-tight ${
+                isWin ? 'text-emerald-300' : isDraw ? 'text-orange-300' : 'text-rose-300'
+              }`}
+            >
+              {isWin ? 'You Won!' : isDraw ? 'Draw' : 'You Lost'}
+            </h2>
+            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.32em] text-slate-500">
+              Market #{position.market_id} · {position.direction.toUpperCase()}
+            </p>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
+            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-slate-500">Stake</p>
+            <p className="mt-1 font-mono text-sm font-bold text-white">
+              {formatTokenAmount(position.stake_amount)} STRK
+            </p>
+          </div>
+          <div
+            className={`rounded-2xl border p-3 text-center ${
+              isWin
+                ? 'border-emerald-500/20 bg-emerald-500/10'
+                : isDraw
+                  ? 'border-orange-500/20 bg-orange-500/10'
+                  : 'border-rose-500/20 bg-rose-500/10'
+            }`}
+          >
+            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-slate-500">PnL</p>
+            <p
+              className={`mt-1 font-mono text-sm font-bold ${
+                isWin ? 'text-emerald-300' : isDraw ? 'text-orange-300' : 'text-rose-300'
+              }`}
+            >
+              {isWin || isDraw ? '+' : ''}
+              {formatTokenAmount(position.net_pnl)} STRK
+            </p>
+          </div>
+        </div>
+
+        {/* Entry / settlement prices */}
+        {(position.entry_price || position.settlement_price) ? (
+          <div className="mb-6 rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
+              <div>
+                Entry
+                <div className="mt-0.5 font-mono text-white">
+                  ${formatOraclePrice(position.entry_price)?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '--'}
+                </div>
+              </div>
+              <div>
+                Settlement
+                <div className="mt-0.5 font-mono text-white">
+                  ${formatOraclePrice(position.settlement_price)?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '--'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <button
+          onClick={onClose}
+          className={`w-full rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.2em] transition ${
+            isWin
+              ? 'bg-emerald-500 text-white hover:bg-emerald-400'
+              : isDraw
+                ? 'bg-orange-500 text-white hover:bg-orange-400'
+                : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+          }`}
+        >
+          {isWin ? 'Collect Winnings' : isDraw ? 'Close' : 'Trade Again'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ──────────────────────────────────────────────────────────
 
 export const TradingDashboard = () => {
   const queryClient = useQueryClient();
@@ -27,6 +180,14 @@ export const TradingDashboard = () => {
   const [showAccount, setShowAccount] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
   const [claimingMarketId, setClaimingMarketId] = useState<string | null>(null);
+  const [currentBtcPrice, setCurrentBtcPrice] = useState<number | null>(null);
+
+  // Trade execution records for chart markers
+  const [pendingTrades, setPendingTrades] = useState<TradeExecutionRecord[]>([]);
+
+  // Outcome modal
+  const [outcomeModal, setOutcomeModal] = useState<{ outcome: 'WIN' | 'LOSS' | 'DRAW'; position: any } | null>(null);
+  const seenOutcomes = useRef<Set<string>>(new Set());
 
   const viewerAddress = address ?? '';
 
@@ -34,10 +195,7 @@ export const TradingDashboard = () => {
     queryKey: ['positions', viewerAddress],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/positions/${viewerAddress}`);
-      if (!response.ok) {
-        throw new Error('Unable to load positions');
-      }
-
+      if (!response.ok) throw new Error('Unable to load positions');
       return response.json();
     },
     enabled: Boolean(viewerAddress),
@@ -47,23 +205,74 @@ export const TradingDashboard = () => {
   const positionSummary = positionsQuery.data?.summary;
   const positions = positionsQuery.data?.positions ?? [];
 
+  // ── Show win/lose modal when a position resolves ───────────────────────────
+  useEffect(() => {
+    for (const pos of positions) {
+      const key = `${pos.market_id}-${pos.direction}`;
+      if (seenOutcomes.current.has(key)) continue;
+      if (pos.status === 'WIN' || pos.status === 'LOSS' || pos.status === 'DRAW') {
+        seenOutcomes.current.add(key);
+        setOutcomeModal({ outcome: pos.status as 'WIN' | 'LOSS' | 'DRAW', position: pos });
+        break; // show one at a time
+      }
+    }
+  }, [positions]);
+
   const livePnL = useMemo(
     () => formatTokenAmount(positionSummary?.resolved_pnl || '0'),
     [positionSummary?.resolved_pnl],
   );
 
-  const handleAuth = async () => {
-    if (authenticated) {
-      setShowAccount(true);
-      return;
+  // ── Trade markers for PriceChart ──────────────────────────────────────────
+  const tradeMarkers = useMemo<TradeMarker[]>(() => {
+    const markers: TradeMarker[] = [];
+
+    // From pending/confirmed local trades
+    for (const t of pendingTrades) {
+      if (t.status === 'failed') continue;
+      if (!t.entryPrice) continue;
+
+      markers.push({
+        time: Math.floor(new Date(t.submittedAt).getTime() / 1000),
+        price: t.entryPrice,
+        direction: t.direction,
+        label: `${t.direction} ${t.stake} STRK`,
+      });
     }
 
-    try {
-      await connect();
-      setShowAccount(true);
-    } catch {
-      // Connection errors are surfaced by the wallet provider state.
+    // From settled positions with a known entry price
+    for (const pos of positions) {
+      if (!pos.entry_price) continue;
+      const key = `${pos.market_id}-${pos.direction}`;
+      if (markers.some((m) => m.label.includes(key))) continue;
+      const entryPrice = formatOraclePrice(pos.entry_price);
+      if (!entryPrice) continue;
+      markers.push({
+        time: pos.opened_at ? Math.floor(new Date(pos.opened_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        price: entryPrice,
+        direction: pos.direction.toUpperCase() === 'LONG' || pos.direction.toUpperCase() === 'UP' ? 'UP' : 'DOWN',
+        label: `${pos.direction} #${pos.market_id}`,
+      });
     }
+
+    return markers;
+  }, [pendingTrades, positions]);
+
+  const handleTradeSubmitted = (record: TradeExecutionRecord) => {
+    setPendingTrades((prev) => {
+      const existing = prev.findIndex((t) => t.txHash === record.txHash);
+      if (existing >= 0) {
+        const updated = [...prev];
+        updated[existing] = record;
+        return updated.slice(0, 8);
+      }
+      return [record, ...prev].slice(0, 8);
+    });
+  };
+
+  const handleAuth = async () => {
+    if (authenticated) { setShowAccount(true); return; }
+    try { await connect(); setShowAccount(true); } catch { /* surfaced by provider */ }
   };
 
   const handleDisconnect = async () => {
@@ -73,18 +282,11 @@ export const TradingDashboard = () => {
   };
 
   const handleClaim = async (marketId: string) => {
-    if (!wallet) {
-      return;
-    }
-
+    if (!wallet) return;
     setClaimingMarketId(marketId);
-
     try {
-      await claimMarket({
-        wallet,
-        marketId,
-      });
-
+      const tx = await claimMarket({ wallet, marketId });
+      await tx.wait();
       await queryClient.invalidateQueries({ queryKey: ['positions', viewerAddress] });
       await queryClient.invalidateQueries({ queryKey: ['feed'] });
       await queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
@@ -98,11 +300,21 @@ export const TradingDashboard = () => {
 
   return (
     <div className="relative min-h-screen bg-[#0a0a0a] p-4 text-white selection:bg-orange-500 selection:text-white md:p-8">
+
+      {/* Win / Lose Modal */}
+      {outcomeModal ? (
+        <OutcomeModal
+          outcome={outcomeModal.outcome}
+          position={outcomeModal.position}
+          onClose={() => setOutcomeModal(null)}
+        />
+      ) : null}
+
+      {/* Account Modal */}
       {showAccount ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
           <div className="glass-morphism relative w-full max-w-2xl overflow-hidden border border-white/10 p-8 shadow-2xl">
             <div className="absolute right-0 top-0 -z-10 h-40 w-40 bg-orange-500/10 blur-3xl" />
-
             <div className="mb-8 flex items-start justify-between">
               <div>
                 <h2 className="text-3xl font-black uppercase italic tracking-tight text-white">
@@ -123,35 +335,25 @@ export const TradingDashboard = () => {
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
               <div className="space-y-5">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">
-                    Controller Handle
-                  </p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">Controller Handle</p>
                   <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-200">
                     {username || 'Anonymous Controller'}
                   </div>
                 </div>
-
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-                    Execution Wallet
-                  </p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Execution Wallet</p>
                   <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-white">
                     {viewerAddress || 'DISCONNECTED'}
                   </div>
                 </div>
               </div>
-
               <div className="space-y-5">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-                    Session Mode
-                  </p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Session Mode</p>
                   <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                    Cartridge handles wallet auth and transaction approval directly through the
-                    controller session.
+                    Cartridge handles wallet auth and transaction approval directly through the controller session.
                   </p>
                 </div>
-
                 <div className="grid grid-cols-1 gap-2">
                   <button
                     onClick={() => void openProfile()}
@@ -172,6 +374,7 @@ export const TradingDashboard = () => {
         </div>
       ) : null}
 
+      {/* Nav */}
       <nav className="mb-10 flex items-center justify-between px-2">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient shadow-lg shadow-orange-500/20">
@@ -179,9 +382,7 @@ export const TradingDashboard = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black uppercase italic tracking-tight">BitDrum</h1>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
-              Intelligence Protocol
-            </p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Intelligence Protocol</p>
           </div>
         </div>
 
@@ -239,23 +440,81 @@ export const TradingDashboard = () => {
         </div>
       ) : null}
 
+      {/* Pending trades banner */}
+      {pendingTrades.length > 0 ? (
+        <div className="mb-6 flex flex-col gap-2">
+          {pendingTrades.slice(0, 3).map((t) => (
+            <div
+              key={t.id}
+              className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-xs transition ${
+                t.status === 'confirmed'
+                  ? 'border-emerald-500/20 bg-emerald-500/10'
+                  : t.status === 'failed'
+                    ? 'border-rose-500/20 bg-rose-500/10'
+                    : 'border-orange-500/20 bg-orange-500/10'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {t.direction === 'UP' ? (
+                  <TrendingUp className="h-4 w-4 text-emerald-400" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-rose-400" />
+                )}
+                <span className="font-black uppercase tracking-widest text-white">
+                  {t.direction} · {t.stake} STRK
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                    t.status === 'confirmed'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : t.status === 'failed'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : 'bg-orange-500/20 text-orange-300'
+                  }`}
+                >
+                  {t.status}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {t.explorerUrl ? (
+                  <a
+                    href={t.explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
+                  >
+                    Explorer <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                ) : null}
+                <button
+                  onClick={() => setPendingTrades((p) => p.filter((x) => x.id !== t.id))}
+                  className="rounded-full p-1 text-slate-500 transition hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <main
         className={`grid grid-cols-1 gap-6 transition-all lg:grid-cols-12 ${showAccount ? 'blur-xl opacity-20' : 'opacity-100'}`}
       >
         <div className="flex flex-col gap-6 lg:col-span-8">
-          <PriceChart />
+          <PriceChart
+            tradeMarkers={tradeMarkers}
+            recentExecutions={pendingTrades}
+            onPriceUpdate={setCurrentBtcPrice}
+          />
 
+          {/* Active Positions */}
           <div className="glass-morphism">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold uppercase tracking-tight text-white">
-                  Active Predictions
-                </h3>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-                  Live Portfolio
-                </p>
+                <h3 className="text-lg font-bold uppercase tracking-tight text-white">Active Predictions</h3>
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Live Portfolio</p>
               </div>
-
               <div className="flex gap-2">
                 <span className="rounded-full border border-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300">
                   Win Rate {((positionSummary?.win_rate || 0) * 100).toFixed(1)}%
@@ -279,7 +538,13 @@ export const TradingDashboard = () => {
                 positions.map((position: any) => (
                   <article
                     key={`${position.market_id}-${position.direction}`}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                    className={`rounded-2xl border p-4 transition ${
+                      position.status === 'WIN'
+                        ? 'border-emerald-500/20 bg-emerald-500/5'
+                        : position.status === 'LOSS'
+                          ? 'border-rose-500/20 bg-rose-500/5'
+                          : 'border-white/10 bg-white/5'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -289,38 +554,60 @@ export const TradingDashboard = () => {
                         <p className="mt-1 text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
                           {position.status}
                         </p>
+                        {position.duration_seconds ? (
+                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.24em] text-orange-300">
+                            {formatTimeframe(position.duration_seconds)}
+                          </p>
+                        ) : null}
                       </div>
-                      {position.can_claim ? (
-                        <button
-                          onClick={() => handleClaim(position.market_id)}
-                          disabled={claimingMarketId === position.market_id}
-                          className="rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {claimingMarketId === position.market_id ? 'Claiming' : 'Claim'}
-                        </button>
-                      ) : null}
+                      <div className="flex gap-2">
+                        {(position.status === 'WIN' || position.status === 'LOSS' || position.status === 'DRAW') ? (
+                          <button
+                            onClick={() => setOutcomeModal({ outcome: position.status, position })}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
+                          >
+                            Details
+                          </button>
+                        ) : null}
+                        {position.can_claim ? (
+                          <button
+                            onClick={() => handleClaim(position.market_id)}
+                            disabled={claimingMarketId === position.market_id}
+                            className="rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {claimingMarketId === position.market_id ? 'Claiming' : 'Claim'}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-slate-400">
                       <div>
                         Stake
-                        <div className="mt-1 font-mono text-white">
-                          {formatTokenAmount(position.stake_amount)} STRK
-                        </div>
+                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.stake_amount)} STRK</div>
                       </div>
                       <div>
                         Payout
-                        <div className="mt-1 font-mono text-white">
-                          {formatTokenAmount(position.expected_payout)} STRK
-                        </div>
+                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.expected_payout)} STRK</div>
                       </div>
                       <div>
                         Net PnL
-                        <div className="mt-1 font-mono text-white">
+                        <div className={`mt-1 font-mono ${Number(position.net_pnl) > 0 ? 'text-emerald-300' : Number(position.net_pnl) < 0 ? 'text-rose-300' : 'text-white'}`}>
                           {formatTokenAmount(position.net_pnl)} STRK
                         </div>
                       </div>
                     </div>
+                    {position.transaction_hash ? (
+                      <a
+                        href={`https://sepolia.voyager.online/tx/${position.transaction_hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 transition hover:text-white"
+                      >
+                        View Transaction
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : null}
                   </article>
                 ))
               )}
@@ -332,6 +619,8 @@ export const TradingDashboard = () => {
           <TradePanel
             selectedMarket={selectedMarket}
             onClearSelection={() => setSelectedMarket(null)}
+            currentPrice={currentBtcPrice}
+            onTradeSubmitted={handleTradeSubmitted}
           />
           <MarketFeed
             viewerAddress={viewerAddress || undefined}

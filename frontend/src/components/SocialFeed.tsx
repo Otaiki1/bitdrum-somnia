@@ -4,7 +4,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowUpRight, Radio, Trophy, UserPlus } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { API_BASE, WS_URL } from '../utils/starkzap';
-import { formatTokenAmount, shortAddress, type MarketRecord } from '../utils/bitdrum';
+import {
+  formatTimeframe,
+  formatTokenAmount,
+  shortAddress,
+  type MarketRecord,
+} from '../utils/bitdrum';
 
 type FeedItem = {
   market_id: string;
@@ -18,6 +23,10 @@ type FeedItem = {
   short_pool: string;
   state: string;
   pom_profit_bps: number;
+  duration_seconds: number;
+  join_deadline: number | null;
+  opened_at: string | null;
+  settlement_deadline: number | null;
   signal: {
     direction: string;
     confidence: number;
@@ -251,6 +260,16 @@ export const MarketFeed = ({
                     {formatTokenAmount(item.long_pool)} / {formatTokenAmount(item.short_pool)}
                   </div>
                 </div>
+                {item.duration_seconds ? (
+                  <div>
+                    Timeframe
+                    <div className="mt-1 font-mono text-white">{formatTimeframe(item.duration_seconds)}</div>
+                  </div>
+                ) : null}
+                <div>
+                  Window
+                  <div className="mt-1 font-mono text-white">{item.state}</div>
+                </div>
               </div>
 
               {item.signal ? (
@@ -272,6 +291,10 @@ export const MarketFeed = ({
                       long_pool: item.long_pool,
                       short_pool: item.short_pool,
                       pom_profit_bps: item.pom_profit_bps,
+                      duration_seconds: item.duration_seconds,
+                      join_deadline: item.join_deadline,
+                      opened_at: item.opened_at,
+                      settlement_deadline: item.settlement_deadline,
                       signal: item.signal,
                     })
                   }

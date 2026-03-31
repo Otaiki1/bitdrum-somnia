@@ -4,6 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ExternalLink,
   Loader2,
   ShieldCheck,
   Sparkles,
@@ -15,11 +16,14 @@ import {
 import { useCartridgeWallet } from './CartridgeWalletProvider';
 import { API_BASE } from '../utils/starkzap';
 import {
+  formatOraclePrice,
+  formatTimeframe,
   formatTokenAmount,
   joinMarket,
   openMarket,
   type BitdrumDirection,
   type MarketRecord,
+  type TradeExecutionRecord,
 } from '../utils/bitdrum';
 
 function signalTone(direction: string) {
@@ -31,9 +35,13 @@ function signalTone(direction: string) {
 export const TradePanel = ({
   selectedMarket,
   onClearSelection,
+  currentPrice,
+  onTradeSubmitted,
 }: {
   selectedMarket?: MarketRecord | null;
   onClearSelection?: () => void;
+  currentPrice?: number | null;
+  onTradeSubmitted?: (record: TradeExecutionRecord) => void;
 }) => {
   const queryClient = useQueryClient();
   const { wallet, authenticated, connecting, connect } = useCartridgeWallet();
@@ -41,19 +49,17 @@ export const TradePanel = ({
   const [stake, setStake] = useState('10');
   const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
   const [isPending, setIsPending] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [lastRecord, setLastRecord] = useState<TradeExecutionRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const mode = selectedMarket ? 'join' : 'open';
+  const activeTimeframeSeconds = Number(selectedMarket?.duration_seconds || 300);
 
   const marketDetailQuery = useQuery({
     queryKey: ['market-detail', selectedMarket?.id],
     queryFn: async () => {
       const response = await fetch(`${API_BASE}/markets/${selectedMarket?.id}`);
-      if (!response.ok) {
-        throw new Error('Unable to load selected market');
-      }
-
+      if (!response.ok) throw new Error('Unable to load selected market');
       return response.json();
     },
     enabled: Boolean(selectedMarket?.id),
@@ -61,42 +67,34 @@ export const TradePanel = ({
   });
 
   const signalQuery = useQuery({
-    queryKey: ['signal', selectedMarket?.id ?? 'preview', previewDirection, stake],
+    queryKey: ['signal', selectedMarket?.id ?? 'preview', previewDirection, stake, activeTimeframeSeconds],
     queryFn: async () => {
       const url = selectedMarket?.id
         ? `${API_BASE}/signal/${selectedMarket.id}`
         : `${API_BASE}/signal/preview?direction=${previewDirection}&stake=${stake}`;
       const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Unable to load signal');
-      }
-
+      // Treat non-ok as a soft failure — fall through to undefined data
+      if (!response.ok) return null;
       return response.json();
     },
     refetchInterval: selectedMarket?.id ? 20_000 : 15_000,
   });
 
   const pomQuery = useQuery({
-    queryKey: ['pom', selectedMarket?.id ?? 'preview', previewDirection, stake],
+    queryKey: ['pom', selectedMarket?.id ?? 'preview', previewDirection, stake, activeTimeframeSeconds],
     queryFn: async () => {
       const url = selectedMarket?.id
         ? `${API_BASE}/pom/${selectedMarket.id}`
         : `${API_BASE}/pom/preview?direction=${previewDirection}&stake=${stake}`;
       const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Unable to load POM quote');
-      }
-
+      if (!response.ok) return null;
       return response.json();
     },
     refetchInterval: selectedMarket?.id ? 20_000 : 15_000,
   });
 
   const activeMarket = selectedMarket?.id
-    ? {
-        ...selectedMarket,
-        ...marketDetailQuery.data?.market,
-      }
+    ? { ...selectedMarket, ...marketDetailQuery.data?.market }
     : null;
 
   const signal = signalQuery.data?.signal;
@@ -116,7 +114,6 @@ export const TradePanel = ({
 
   const handleConnect = async () => {
     setError(null);
-
     try {
       await connect();
     } catch (caughtError: any) {
@@ -129,54 +126,79 @@ export const TradePanel = ({
       setError('Connect Cartridge to trade.');
       return;
     }
-
     if (!stake || Number(stake) <= 0 || Number.isNaN(Number(stake))) {
       setError('Enter a valid STRK stake.');
       return;
     }
 
     setError(null);
-    setStatusMessage(null);
+    setLastRecord(null);
     setIsPending(true);
 
     try {
+      let tx: any;
+      let kind: 'OPEN' | 'JOIN';
+      let marketId: string | null = null;
+      const timeframeSeconds = Number(activeMarket?.duration_seconds || 300);
+
       if (mode === 'open') {
         const pomResponse = await fetch(
           `${API_BASE}/pom/preview?direction=${direction}&stake=${stake}`,
         );
-        if (!pomResponse.ok) {
-          throw new Error('Unable to fetch dynamic POM quote');
-        }
-
-        const pomPayload = await pomResponse.json();
+        const pomPayload = pomResponse.ok ? await pomResponse.json() : null;
         const pomProfitBps = Number(pomPayload?.pom?.pom_profit_bps || currentPomBps);
 
-        await openMarket({
-          wallet,
-          direction,
-          stake,
-          pomProfitBps,
-        });
-
-        setStatusMessage(`Opened a ${direction} market.`);
+        tx = await openMarket({ wallet, direction, stake, pomProfitBps });
+        kind = 'OPEN';
       } else if (activeMarket?.id) {
-        await joinMarket({
-          wallet,
-          marketId: activeMarket.id,
-          direction,
-          stake,
-        });
-
-        setStatusMessage(`Joined market #${activeMarket.id} ${direction}.`);
+        tx = await joinMarket({ wallet, marketId: activeMarket.id, direction, stake });
+        kind = 'JOIN';
+        marketId = activeMarket.id;
         onClearSelection?.();
+      } else {
+        throw new Error('No market selected');
       }
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['feed'] }),
-        queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
-        queryClient.invalidateQueries({ queryKey: ['positions'] }),
-        queryClient.invalidateQueries({ queryKey: ['market-detail'] }),
-      ]);
+      const txHash: string = tx?.hash ?? '';
+      const record: TradeExecutionRecord = {
+        id: txHash || `${Date.now()}-${direction}`,
+        kind,
+        marketId,
+        direction,
+        stake,
+        timeframeSeconds,
+        entryPrice: formatOraclePrice(activeMarket?.entry_price) ?? currentPrice ?? null,
+        txHash,
+        explorerUrl: tx?.explorerUrl || '',
+        status: 'submitted',
+        submittedAt: new Date().toISOString(),
+        error: null,
+      };
+
+      setLastRecord(record);
+      onTradeSubmitted?.(record);
+
+      // Fire-and-forget confirmation tracking
+      if (txHash && tx?.wait) {
+        tx.wait()
+          .then(() => {
+            const confirmed = { ...record, status: 'confirmed' as const };
+            setLastRecord(confirmed);
+            onTradeSubmitted?.(confirmed);
+
+            void Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['feed'] }),
+              queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
+              queryClient.invalidateQueries({ queryKey: ['positions'] }),
+              queryClient.invalidateQueries({ queryKey: ['market-detail'] }),
+            ]);
+          })
+          .catch(() => {
+            const failed = { ...record, status: 'failed' as const, error: 'Transaction reverted' };
+            setLastRecord(failed);
+            onTradeSubmitted?.(failed);
+          });
+      }
     } catch (caughtError: any) {
       setError(caughtError?.message || 'Trade execution failed');
     } finally {
@@ -232,6 +254,16 @@ export const TradePanel = ({
               <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Short Pool</p>
               <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.short_pool)} STRK</p>
             </div>
+            {activeMarket.duration_seconds ? (
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Timeframe</p>
+                <p className="mt-1 font-mono">{formatTimeframe(activeMarket.duration_seconds)}</p>
+              </div>
+            ) : null}
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Direction</p>
+              <p className="mt-1 font-mono">{activeMarket.direction || 'Live Market'}</p>
+            </div>
           </div>
         </div>
       ) : (
@@ -279,7 +311,7 @@ export const TradePanel = ({
               signal?.direction || 'NEUTRAL',
             )}`}
           >
-            {signal?.direction || 'LOADING'}
+            {signal?.direction || 'NEUTRAL'}
           </span>
         </div>
 
@@ -307,14 +339,58 @@ export const TradePanel = ({
           <span className="text-emerald-300">+{projectedProfit.toFixed(3)} STRK</span>
         </div>
         <div className="text-xs text-slate-400">
-          If the trade settles in your favour at {(currentPomBps / 100).toFixed(2)}%, your
-          payout estimate is {(Number(stake || '0') + projectedProfit).toFixed(3)} STRK.
+          If the trade settles in your favour at {(currentPomBps / 100).toFixed(2)}%, your payout
+          estimate is {(Number(stake || '0') + projectedProfit).toFixed(3)} STRK.
         </div>
       </div>
 
-      {statusMessage ? (
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-200">
-          {statusMessage}
+      {/* Transaction Status Card */}
+      {lastRecord ? (
+        <div
+          className={`rounded-2xl border p-3 text-xs transition-all ${
+            lastRecord.status === 'confirmed'
+              ? 'border-emerald-500/30 bg-emerald-500/10'
+              : lastRecord.status === 'failed'
+                ? 'border-rose-500/30 bg-rose-500/10'
+                : 'border-orange-500/20 bg-orange-500/10'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {lastRecord.status === 'submitted' ? (
+                <Loader2 className="h-3 w-3 animate-spin text-orange-400" />
+              ) : null}
+              <span
+                className={`font-black uppercase tracking-widest ${
+                  lastRecord.status === 'confirmed'
+                    ? 'text-emerald-300'
+                    : lastRecord.status === 'failed'
+                      ? 'text-rose-300'
+                      : 'text-orange-300'
+                }`}
+              >
+                {lastRecord.status === 'submitted'
+                  ? 'Submitted — awaiting confirmation'
+                  : lastRecord.status === 'confirmed'
+                    ? '✓ Transaction confirmed'
+                    : '✗ Transaction failed'}
+              </span>
+            </div>
+            {lastRecord.explorerUrl ? (
+              <a
+                href={lastRecord.explorerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
+            >
+                Explorer
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            ) : null}
+          </div>
+          {lastRecord.error ? (
+            <p className="mt-1 text-rose-300">{lastRecord.error}</p>
+          ) : null}
         </div>
       ) : null}
 
