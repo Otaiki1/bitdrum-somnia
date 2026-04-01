@@ -1,9 +1,9 @@
 {
-    "MockERC20": "0x7fe107c968646cb6dd7bc2887149a126b696dbbd8f310ad5ce2ada2223567f1",
-    "Vault": "0x754cec0998c22deb76cec0b920bcd02c70df45f44c8b727fbd7957d43310967",
-    "Treasury": "0x6f80bd523db4b578dd09696c48ded6f259da842c78279d3eb8ff76091dfb446",
-    "PredictionMarket": "0xe34d84cf5b661f0206d369d9d919b13a13b08ff0eb54e1e3056dd592db4303",
-    "SettlementEngine": "0x16acfb8558a2d379a463cb48f2eb89d6ef0955c330ec7af004fdff696777a1e",
-    "LeaderboardRegistry": "0x2b2c14c8f6d6ebb7b36c4c798ad1917ffec0c85d8835ea5e922d2197e978219",
-    "SignalSubscription": "0x524cfe1af0a0ac71f5a24ccc8814ec8d4eb731f2796463cc7c7a94ae1e98cf6"
+    "MockERC20": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "Vault": "0x22425793cf6ca306d8cc02a3c6f3c0feb09cc5b3de9b7eec43463f3f6843b1",
+    "Treasury": "0x1c79b7cecd15a0bbda86ccd57260cd47508c499b2c6780948de9dafc04ee286",
+    "PredictionMarket": "0x27ca3cdaeba08f02dd9698a1056f50d1e928e61435830ef9bc401b17a5de63a",
+    "SettlementEngine": "0x2ab6960b09a520dd693df884c801d931e3b70d79c03b5e15ef346a945e582b0",
+    "LeaderboardRegistry": "0x19871bb3b42f98ab798292f783a569717f67c4a0cb1f20863aa28c889e02db1",
+    "SignalSubscription": "0x29aa838a2be2d38396ec8a477363efd59251cbe9e5783b61ea52dfd8cad6dd2"
 }

@@ -26,7 +26,11 @@
 14. [Frontend Architecture](#14-frontend-architecture)
 15. [Backend & Keeper Infrastructure](#15-backend--keeper-infrastructure)
 16. [Deployment & Environment Strategy](#16-deployment--environment-strategy)
-17. [Glossary](#17-glossary)
+17. [Wallet Dashboard & Balance System](#17-wallet-dashboard--balance-system)
+18. [Multi-Token Support & USD Display](#18-multi-token-support--usd-display)
+19. [Trade Cooldown & Sync Model](#19-trade-cooldown--sync-model)
+20. [Performance Model](#20-performance-model)
+21. [Glossary](#21-glossary)
 
 ---
 
@@ -789,87 +793,168 @@ The Social Layer uses several protections to prevent manipulation of rankings:
 
 ## 9. Starknet & Starkzap Integration
 
-BitDrum is built on **Starknet** and uses the **Starkzap TypeScript SDK** for all client-side blockchain interactions.
+BitDrum is built on **Starknet** and uses the **Starkzap TypeScript SDK** as the exclusive interface for all wallet interaction, token operations, swaps, staking, bridging, and transaction construction. The frontend never calls Starknet RPCs directly.
 
 ### 9.1 Why Starknet
 
 | Property | Benefit for BitDrum |
 |---|---|
 | **Native Account Abstraction** | Users authenticate with email, social login, or passkeys — no seed phrase or MetaMask required |
-| **Low fees** | Prediction markets with small stakes (< 0.01 BTC) are economically viable |
+| **Low fees** | Prediction markets with small stakes are economically viable |
 | **Cairo contracts** | Proven language for financial logic with built-in safety guarantees |
 | **Pragma Oracle** | Native Starknet oracle for BTC/USD with sub-second latency |
-| **sBTC support** | Native wrapped Bitcoin on Starknet used as the staking token |
+| **STRK + sBTC** | STRK as primary trading token; sBTC as mainnet upgrade path |
 
-### 9.2 Starkzap SDK Usage
+### 9.2 Starkzap SDK Module Map
 
-Starkzap handles all wallet interaction, transaction construction, and token operations. The frontend never talks to raw Starknet RPCs.
+Every Starkzap module that BitDrum uses (or targets) is listed here with its concrete role in the product.
 
-**Authentication (via Cartridge + Starkzap):**
+#### Core — Wallet & Auth
+
 ```typescript
 import { StarkZap } from 'starkzap';
 
-const zap = new StarkZap({
+// AVNU Paymaster always active — users pay zero separate gas
+export const sdk = new StarkZap({
   network: 'sepolia',
+  paymaster: { nodeUrl: process.env.NEXT_PUBLIC_AVNU_PAYMASTER_URL },
 });
 
-const wallet = await zap.connectCartridge({
+// Cartridge: social login (Google/passkeys), session key policies, account deployment
+const wallet = await sdk.connectCartridge({
   preset: process.env.NEXT_PUBLIC_CARTRIDGE_PRESET,
 });
-
 await wallet.ensureReady({ deploy: 'if_needed' });
 ```
 
-**Opening a market:**
-```typescript
-const tx = await zap.contracts.predictionMarket.openMarket({
-  direction: 'UP',
-  duration: 60,        // 1 minute in seconds
-  stakeAmount: '500000000000000',  // 0.0005 sBTC in wei
-  strikePriceAttestation: oracleAttestation,
-});
+#### Token Operations — Live Balance & Wallet Dashboard
 
-const result = await zap.transactions.execute(tx);
-```
-
-**Claiming a payout:**
 ```typescript
-const claim = await zap.contracts.predictionMarket.claimPayout({
-  marketId: '0xabc123...',
-});
-await zap.transactions.execute(claim);
-```
-
-**Checking token balance:**
-```typescript
-const balance = await zap.tokens.erc20.balance({
-  token: 'sBTC',
+// Live on-chain STRK balance (feeds WalletDashboard in USD)
+const balance = await sdk.tokens.erc20.balance({
+  token: STRK_ADDRESS,
   address: wallet.address,
 });
+
+// Deposit: transfer STRK into BitDrum escrow contract
+const depositTx = await sdk.tokens.erc20.transfer({
+  token: STRK_ADDRESS,
+  to: BITDRUM_ESCROW_ADDRESS,
+  amount: depositAmount,
+});
+await wallet.execute([depositTx], { feeMode: 'sponsored' });
 ```
 
-### 9.3 Wallet Options (via Starkzap)
+#### Gasless Trade Execution (AVNU Paymaster)
 
-| Wallet Type | Auth Method | Best For |
-|---|---|---|
-| **Cartridge Controller** | Google, passkeys, device biometrics | Default BitDrum onboarding with guided approvals |
-| **Argent** | Seed phrase or biometrics | Future expansion for existing Starknet users |
-| **Braavos** | Seed phrase or biometrics | Future expansion for existing Starknet users |
-
-### 9.4 Gasless Transactions (AVNU Paymaster)
-
-BitDrum integrates **AVNU Paymaster** via Starkzap to allow users to pay transaction fees in sBTC rather than STRK. For ORACLE and PROPHET tier traders, the protocol may optionally subsidize gas fees entirely as a retention incentive, paid from the treasury's AI & infrastructure fund.
+Every trade — open, join, claim — is submitted through the paymaster. Users see a **⚡ Gasless** badge in the TradePanel. Gas fees are covered at the protocol level.
 
 ```typescript
-const zap = new StarkZap({
-  network: 'mainnet',
-  paymaster: {
-    type: 'avnu',
-    apiKey: process.env.AVNU_API_KEY,
-    gasToken: 'sBTC',  // Pay gas in sBTC, not STRK
-  },
-});
+// Batched approve + join_market — gasless via paymaster
+await wallet.execute(
+  [approveCall, joinMarketCall],
+  { feeMode: 'sponsored' },
+);
 ```
+
+#### Cartridge Session Keys — One-Tap Trading
+
+After initial wallet connect, users approve a session policy scoped to BitDrum contracts. Subsequent trades execute without a wallet popup for the duration of the session.
+
+```typescript
+// Session policy: auto-sign open_market and join_market up to stake cap
+const sessionPolicy = {
+  contracts: [PREDICTION_MARKET_ADDRESS],
+  methods: ['open_market', 'join_market'],
+  maxAmount: toTokenBaseUnits('50'), // 50 STRK session cap
+};
+// Cartridge handles the policy approval UI; BitDrum stores the session ref
+```
+
+#### Swaps (AVNU) — Multi-Token Deposit
+
+Users can deposit ETH or USDC; Starkzap routes through AVNU to swap to STRK before crediting the BitDrum balance. No DEX knowledge required.
+
+```typescript
+// Quote: how much STRK does 0.01 ETH get me?
+const quote = await sdk.swap.getQuote({
+  sellToken: ETH_ADDRESS,
+  buyToken: STRK_ADDRESS,
+  sellAmount: toTokenBaseUnits('0.01', 18),
+});
+
+// Execute swap — gasless, single Cartridge tap
+const swapTx = await sdk.swap.buildSwapTransaction(quote);
+await wallet.execute([swapTx], { feeMode: 'sponsored' });
+```
+
+#### Native Staking — Idle Balance Yield
+
+Idle STRK balance in a user's BitDrum account can be opted into native staking. The staking module handles the stake/unstake lifecycle; BitDrum tracks which portion of the balance is staked.
+
+```typescript
+// Stake idle STRK to earn APY while not actively trading
+const stakeTx = await sdk.staking.stake({
+  amount: idleStrkAmount,
+  validator: PREFERRED_VALIDATOR,
+});
+await wallet.execute([stakeTx], { feeMode: 'sponsored' });
+
+// Unstake before a trade (or auto-unstake on trade submit)
+const unstakeTx = await sdk.staking.unstake({ amount: tradeStakeAmount });
+```
+
+#### Bridge (ETH → Starknet) — Remove Onboarding Blocker
+
+Users with ETH on Ethereum mainnet can bridge directly into BitDrum without leaving the app. Starkzap handles the L1 deposit transaction.
+
+```typescript
+// Bridge ETH from L1 to Starknet wallet — shows estimated arrival time
+const bridgeTx = await sdk.bridge.deposit({
+  token: 'ETH',
+  amount: toTokenBaseUnits('0.05', 18),
+  recipient: wallet.address,
+});
+// After bridge confirms on L2, swap module converts ETH → STRK automatically
+```
+
+#### Privy Signer — Email/Social Login Alternative
+
+Privy is offered alongside Cartridge for users who prefer email or social login without a full wallet UX.
+
+```typescript
+import { PrivySigner } from 'starkzap';
+
+const privySigner = new PrivySigner({
+  appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
+});
+const wallet = await sdk.connectWallet(privySigner);
+// Same trading interface — signer backend is swappable
+```
+
+### 9.3 Wallet Options
+
+| Wallet / Signer | Auth Method | Integration | Status |
+|---|---|---|---|
+| **Cartridge Controller** | Google, passkeys, biometrics | `sdk.connectCartridge()` | ✅ Live |
+| **Privy** | Email, social OAuth | `PrivySigner` | Week 3 target |
+| **Argent / Braavos** | Seed phrase or biometrics | `StarkSigner` | Future |
+
+### 9.4 Full Starkzap Module Coverage
+
+| Module | Status | BitDrum Use |
+|---|---|---|
+| Core + Cartridge | ✅ Live | Wallet auth, tx execution |
+| AVNU Paymaster | ✅ Always-on (Sepolia) | Gasless every trade |
+| `tokens.erc20.balance` | Week 1 | Live STRK balance in Wallet Dashboard |
+| `tokens.erc20.transfer` | Week 2 | Deposit/withdraw in Wallet Dashboard |
+| `swap.*` (AVNU) | Week 2 | Multi-token deposit (ETH/USDC → STRK) |
+| `staking.*` | Week 3 | Idle balance yield |
+| `bridge.*` | Week 3 | ETH mainnet onboarding |
+| `PrivySigner` | Week 3 | Email/social login option |
+| `dca.*` | Post-bounty | Auto top-up recurring STRK buys |
+| `lending.*` (Vesu) | Post-bounty | Collateralised positions |
+| `confidential.*` (Tongo) | Post-bounty | Private stake amounts |
 
 ---
 
@@ -885,14 +970,17 @@ const zap = new StarkZap({
    → Signs in with Google or a passkey
    → Controller wallet is connected and deployed if needed
 
-3. Sees tutorial overlay:
-   → "Deposit sBTC to start trading"
-   → Starkzap handles STRK → sBTC swap if needed
-   → Or direct sBTC deposit from exchange
+3. Redirected to Wallet Dashboard (/wallet):
+   → Balance shown as $0.00 USD
+   → Clicks [Deposit]
+   → Selects STRK (or ETH — auto-swapped to STRK)
+   → Enters amount → signs once in Cartridge
+   → Balance updates: e.g. "$50.12 USD · 42.6 STRK"
+   → (Optional) sets session key for future one-tap trades
 
 4. Lands on Live Market Feed:
    → Active markets with countdown timers
-   → Pool sizes and profit rates per side
+   → Pool sizes and profit rates per side, all shown in USD
    → AI Signal cards for each market (direction label — free tier)
 
 5. Picks a market:
@@ -902,25 +990,26 @@ const zap = new StarkZap({
    → Decides to stake 0.001 sBTC on UP
 
 6. Stakes:
-   → Enters amount
-   → App shows: "If UP wins you receive 0.00152 sBTC · If DOWN wins you receive 0.00000 sBTC"
-   → Clicks "Stake UP"
-   → Starkzap builds and signs transaction
-   → Gasless via AVNU (user pays in sBTC)
-   → Transaction confirms in ~2 seconds on Starknet
+   → Enters amount (shown in USD with STRK equivalent below)
+   → App shows: "If UP wins you receive $7.60 (+52%) · If DOWN wins you receive $0.00"
+   → Clicks "Stake UP" (single tap — no wallet popup if session key active)
+   → Cooldown indicator appears: "Syncing trade… 3s"
+   → Trade confirmed — positions panel updates automatically
 
 7. Waits for expiry:
    → Countdown timer visible
    → Live BTC price chart with strike price line marked
    → Profit rate locked — no changes during wait
+   → USD balance shows staked amount as pending
 
 8. Market settles:
-   → WIN: Claim button appears — "Claim 0.00152 sBTC (+52%)"
-   → LOSS: Market closes — "Result: DOWN won · 0.00000 sBTC"
+   → WIN: Claim button appears — "Claim $7.60 (+52%)"
+   → LOSS: Market closes — "Result: DOWN won · $0.00"
 
 9. Claims winnings:
    → One-tap claim
-   → sBTC lands in wallet immediately
+   → USD balance updates immediately: "+$7.60"
+   → Underlying STRK credited to internal balance
 
 10. Profile updated:
     → First win recorded on Leaderboard Registry
@@ -1228,20 +1317,21 @@ Starkzap leverages Starknet's native account abstraction for security benefits:
 /leaderboard            → Global rankings + tier overview
 /profile/:address       → Trader profile page
 /signals                → AI Signal history and accuracy stats
-/portfolio              → User's own trade history and P&L
-/deposit                → sBTC deposit via Starkzap token ops
+/portfolio              → User's own trade history and P&L (shown in USD)
+/wallet                 → Wallet Dashboard: balance (USD), deposit, withdraw, activity log
 /subscribe              → Signal Pro / Signal Elite subscription management
 ```
 
 ### 14.3 Real-Time Data Flow
 
 ```
-Starknet Events (WebSocket via StarkZap)
+Starknet Events (WebSocket via StarkZap) — event-driven push, not polling
     │
     ├── New market opened → Update market feed
     ├── Stake added → Update pool sizes + POM
     ├── Market locked → Update state display
-    └── Market settled → Update outcomes + social stats
+    ├── Market settled → Update outcomes + social stats
+    └── Deposit / Withdrawal confirmed → Update WalletDashboard balance
 
 AI Agent WebSocket (/stream/signals, /stream/pom)
     │
@@ -1250,11 +1340,26 @@ AI Agent WebSocket (/stream/signals, /stream/pom)
 
 Social Indexer WebSocket (/stream/feed)
     └── New market activity from followed wallets → Update feed
+
+USD Price Feed (30s refresh, pushed to all clients via same WebSocket channel)
+    └── STRK/USD + ETH/USD rate → Update all balance displays site-wide
 ```
 
 ### 14.4 Wallet Connection UX
 
 BitDrum defaults to Cartridge Controller onboarding. The frontend calls Starkzap's `connectCartridge()` helper, then waits for the controller account to be ready before any trade is submitted. Additional wallet connectors can be added later, but the current production path is Cartridge-only.
+
+Once connected, the user is directed to the **Wallet Dashboard** (`/wallet`) to fund their BitDrum balance before trading. Subsequent trades deduct from this internal balance — no per-trade wallet popups.
+
+### 14.5 Trade Cooldown UX
+
+After a trade is submitted:
+1. The submit button disables immediately (optimistic lock).
+2. A 2–5 second cooldown indicator is shown while the frontend polls for indexer confirmation.
+3. Once the trade appears in the user's positions, the cooldown clears and the next trade is enabled.
+4. If confirmation is not received within 10 seconds, the UI shows a warning and re-enables the button — the user can check their transaction history.
+
+This prevents double-submission and keeps displayed positions in sync with on-chain state.
 
 ---
 
@@ -1341,7 +1446,209 @@ No admin function can pause settlement, freeze funds, or alter payout math in an
 
 ---
 
-## 17. Glossary
+## 17. Wallet Dashboard & Balance System
+
+### 17.1 Overview
+
+The Wallet Dashboard is a user-facing interface at `/wallet` that gives every BitDrum user a persistent, funded balance they can draw from when trading. The goal is to eliminate per-trade wallet transaction prompts — the user deposits once and trades freely until their balance runs low.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                   WALLET DASHBOARD                   │
+│                                                      │
+│   Balance                                            │
+│   ─────────────────────────────────────────────────  │
+│   $124.38 USD                                        │
+│   ≈ 42.6 STRK  (secondary label)                    │
+│                                                      │
+│   [ Deposit ]    [ Withdraw ]                        │
+│                                                      │
+│   Recent Activity                                    │
+│   ─────────────────────────────────────────────────  │
+│   + Deposit    $50.00    Apr 1 09:12                 │
+│   − Trade      $5.00     Apr 1 09:14  (UP · 1m)     │
+│   + Win        $7.60     Apr 1 09:15  (+52%)         │
+│   − Trade      $5.00     Apr 1 09:17  (DOWN · 30s)  │
+└──────────────────────────────────────────────────────┘
+```
+
+### 17.2 Internal Balance Ledger
+
+The gateway maintains an off-chain ledger of each user's BitDrum balance:
+
+| Event | Effect on Ledger |
+|---|---|
+| Deposit confirmed on-chain | `+amount` credited to user |
+| Trade submitted | `−stake` held as pending |
+| Trade confirmed by indexer | Pending stake consumed |
+| Trade rejected / timed out | Pending stake released back |
+| Win claim confirmed | `+payout` credited |
+| Withdrawal request | `−amount` reserved, on-chain tx submitted |
+
+The ledger is backed by the actual on-chain token positions — it is a read-through cache, not a fractional reserve. Any discrepancy between ledger and on-chain state is detected at withdrawal time and the on-chain value wins.
+
+### 17.3 Deposit Flow
+
+```
+1. User opens /wallet → clicks Deposit
+2. Selects token (STRK / ETH / sBTC)
+3. Enters amount
+4. Starkzap constructs ERC-20 approve + transfer to BitDrum escrow contract
+5. User signs once in Cartridge (or session key if pre-approved)
+6. On confirmation: gateway ledger is updated, balance shown in USD
+```
+
+### 17.4 Withdrawal Flow
+
+```
+1. User enters withdrawal amount (validated against available balance)
+2. Gateway marks amount as reserved
+3. Starkzap constructs transfer from escrow back to wallet
+4. User signs — on confirmation ledger decrements
+5. Withdrawal appears in activity log
+```
+
+### 17.5 Session Key (Optional)
+
+For users who want fully gasless, no-popup trading after deposit, a Cartridge session key can be configured to auto-sign trade transactions up to a per-trade and daily cap. This is opt-in and the user sets their own limits.
+
+---
+
+## 18. Multi-Token Support & USD Display
+
+### 18.1 Supported Tokens (Sepolia Beta)
+
+| Token | Role | Status |
+|---|---|---|
+| **STRK** | Primary trading token | Live |
+| **ETH** | Deposit option (swapped to STRK internally) | Beta |
+| **sBTC** | Future primary token for mainnet | Config flag — disabled on Sepolia |
+
+All tokens are listed in a central config file (`config/tokens.ts`) shared across frontend, gateway, keeper, and deploy scripts. Adding a new token requires one entry in this file.
+
+### 18.2 USD Display
+
+All monetary values visible to users are displayed in USD. The underlying on-chain token amounts are shown as secondary labels.
+
+**Price feed:**
+- Gateway fetches STRK/USD and ETH/USD from Pragma Oracle or CoinGecko fallback every 30 seconds.
+- Rate is stored in a `UsdPriceContext` React context and refreshed site-wide simultaneously.
+- All balance, stake, payout, and P&L fields convert via: `usd_value = token_amount × rate`.
+
+**Display convention:**
+```
+Primary:   $124.38
+Secondary: 42.6 STRK
+```
+
+The underlying token is shown so technically-minded users and on-chain verifiers can reconcile values. P&L on profiles and the leaderboard follows the same convention with a toggle to flip to native token.
+
+### 18.3 Multi-Token Normalisation
+
+When a user deposits ETH and the active market settles in STRK:
+1. The deposit screen quotes an estimated STRK equivalent at current rate.
+2. On confirmation, the gateway calls a DEX swap (AVNU) to convert ETH → STRK before crediting the ledger.
+3. The ledger always stores balances in the active settlement token; USD display is a view layer on top.
+
+---
+
+## 19. Trade Cooldown & Sync Model
+
+### 19.1 Purpose
+
+The cooldown period prevents the following failure modes:
+- **Double submission**: user clicks twice before the first transaction is confirmed.
+- **Stale position display**: frontend shows the user's positions before the indexer has processed the new stake, leading to confusion about whether the trade landed.
+- **Race conditions**: user opens a second trade before the first is reflected in available balance.
+
+### 19.2 Cooldown Sequence
+
+```
+User clicks [Stake UP]
+    │
+    ▼
+1. UI: disable submit button, show spinner
+2. Gateway: deduct stake from available balance (pending state)
+3. Starkzap: submit transaction to Starknet
+    │
+    ▼
+4. UI: start cooldown timer (2–5s)
+5. Frontend polls GET /positions?pending=true every 500ms
+    │
+    ├── Confirmed within timeout:
+    │     → Position appears in UI
+    │     → Balance updates (pending → consumed)
+    │     → Cooldown clears, submit re-enables
+    │
+    └── Not confirmed within 10s:
+          → UI shows warning: "Transaction pending — check your wallet"
+          → Balance pending stake held for 60s then auto-released if no confirmation
+          → Submit re-enables after warning is dismissed
+```
+
+### 19.3 Cooldown Indicator
+
+The submit button in `TradePanel` is replaced during cooldown with a countdown ring:
+
+```
+╔════════════════════════════╗
+║   ⟳  Syncing trade...      ║
+║   ████████░░░░  2s left    ║
+╚════════════════════════════╝
+```
+
+The BTC price chart continues to update during the cooldown; the market state display freezes on the user's submitted position to avoid confusing visual changes.
+
+---
+
+## 20. Performance Model
+
+### 20.1 Key Latency Targets
+
+| Operation | Target | Mechanism |
+|---|---|---|
+| Market feed refresh | < 200ms | Event-driven WebSocket push (no polling) |
+| USD balance update | < 500ms after deposit confirm | Gateway ledger write → WS push |
+| Trade cooldown | 2–5s | On-chain confirmation + indexer write |
+| AI signal load | < 800ms | Gateway-level 5s TTL cache |
+| Leaderboard load | < 300ms | Redis cache, refresh every 10 minutes |
+| USD price rate | 30s refresh | Cached at gateway, pushed to all WS clients |
+
+### 20.2 Eliminated Complexity
+
+The following sources of unnecessary complexity are removed in this version:
+
+| Removed | Replacement |
+|---|---|
+| Per-trade wallet transaction popup | Single deposit + internal balance deduction |
+| Polling-based WebSocket (one loop per client) | Event-driven push fan-out |
+| Separate USD conversion in each component | `UsdPriceContext` read by all components |
+| Hardcoded token addresses scattered across services | Central `config/tokens.ts` |
+| Multi-step trade confirmation modals | Single submit → cooldown indicator |
+
+### 20.3 Trader UX Flow (Post-Optimisation)
+
+```
+Deposit once → Balance visible in USD
+    │
+    ▼
+Pick market → See AI signal + profit rate in USD
+    │
+    ▼
+Enter amount → Click [Stake UP] (one tap)
+    │
+    ▼
+Cooldown indicator (2–5s) → Trade confirmed
+    │
+    ▼
+Wait for expiry → Claim (one tap) → Balance updates in USD
+```
+
+No wallet popup after initial deposit. No multi-step confirmation. No balance mismatch between trades.
+
+---
+
+## 21. Glossary
 
 | Term | Definition |
 |---|---|
@@ -1371,9 +1678,17 @@ No admin function can pause settlement, freeze funds, or alter payout math in an
 | **Signal Accuracy Log** | Database record of every AI signal generated and its eventual accuracy — used to retrain and recalibrate the model |
 | **DRAW** | A settlement outcome where the final BTC price equals the strike price — all participants receive a full refund |
 | **Joining Window** | The period after market open during which other users can stake on either side (≈ 1/3 of total duration) |
+| **Wallet Dashboard** | The `/wallet` page where users deposit, withdraw, and view their BitDrum balance in USD |
+| **Internal Balance Ledger** | Gateway-maintained per-user balance derived from confirmed on-chain deposits; deducted per trade without requiring a new wallet signature |
+| **Trade Cooldown** | A 2–5 second UI lock after trade submission that waits for indexer confirmation before re-enabling the submit button |
+| **USD Display** | The convention of showing all monetary values (balance, stake, payout, P&L) in US dollars with the underlying token amount as a secondary label |
+| **UsdPriceContext** | A React context that stores the live STRK/USD (and ETH/USD) rate and refreshes it every 30 seconds for all components |
+| **Token Config** | A central `config/tokens.ts` file listing all supported deposit/trading tokens, their addresses, and active flags — shared across frontend, gateway, keeper, and deploy scripts |
+| **Session Key** | An optional Cartridge Controller feature that pre-approves trade transactions up to a user-set cap, eliminating per-trade wallet popups after deposit |
+| **Pending Stake** | A stake amount reserved in the internal balance ledger after trade submission but before indexer confirmation |
 
 ---
 
 > **BitDrum — trustless prediction markets, intelligent signals, and a community of on-chain traders.**
 >
-> *Built on Starknet. Powered by Starkzap. Guided by AI. Ranked by the market. Capped at 70. All or nothing.*
+> *Built on Starknet. Powered by Starkzap. Guided by AI. Ranked by the market. Capped at 70. All or nothing. Balance in USD.*

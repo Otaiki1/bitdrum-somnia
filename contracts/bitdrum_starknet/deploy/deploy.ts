@@ -62,19 +62,10 @@ async function main() {
 
     const addresses: Record<string, string> = {};
 
-    // 1. Declare & Deploy MockERC20 (Optional for Sepolia)
-    // For production, we'd use the actual BTC/USDC address.
-    // Here we'll deploy a MockERC20 for full isolation on Sepolia.
-    console.log("⏳ Deploying MockERC20...");
-    const { sierra: erc20S, casm: erc20C } = loadArtifact("MockERC20");
-    const erc20Deploy = await deployer.declareAndDeploy({
-        contract: erc20S,
-        casm: erc20C,
-        constructorCalldata: []
-    });
-    await provider.waitForTransaction(erc20Deploy.deploy.transaction_hash);
-    addresses["MockERC20"] = erc20Deploy.deploy.contract_address;
-    console.log(`✅ MockERC20: ${addresses["MockERC20"]}`);
+    // 1. Use Native STRK Token Address (Sepolia)
+    // For local/test isolation you could deploy a mock, but user requested native STRK.
+    addresses["MockERC20"] = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+    console.log(`✅ Using STRK: ${addresses["MockERC20"]}`);
 
     // 2. Deploy Vault
     console.log("⏳ Deploying Vault...");
