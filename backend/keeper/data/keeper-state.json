@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-22T22:39:52.386Z",
+  "markets": {
+    "1": {
+      "marketId": "1",
+      "joinDeadline": 1774210295,
+      "lastKnownState": "Open",
+      "lastSeenAt": "2026-03-22T22:39:52.386Z",
+      "lastAttemptAt": "2026-03-22T22:39:52.386Z",
+      "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
+    }
+  }
+}
