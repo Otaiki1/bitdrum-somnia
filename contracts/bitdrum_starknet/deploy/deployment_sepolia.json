@@ -1,9 +1,0 @@
-{
-    "MockERC20": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
-    "Vault": "0x22425793cf6ca306d8cc02a3c6f3c0feb09cc5b3de9b7eec43463f3f6843b1",
-    "Treasury": "0x1c79b7cecd15a0bbda86ccd57260cd47508c499b2c6780948de9dafc04ee286",
-    "PredictionMarket": "0x27ca3cdaeba08f02dd9698a1056f50d1e928e61435830ef9bc401b17a5de63a",
-    "SettlementEngine": "0x2ab6960b09a520dd693df884c801d931e3b70d79c03b5e15ef346a945e582b0",
-    "LeaderboardRegistry": "0x19871bb3b42f98ab798292f783a569717f67c4a0cb1f20863aa28c889e02db1",
-    "SignalSubscription": "0x29aa838a2be2d38396ec8a477363efd59251cbe9e5783b61ea52dfd8cad6dd2"
-}

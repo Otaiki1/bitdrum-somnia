@@ -1,13 +1,53 @@
 {
   "version": 1,
-  "updatedAt": "2026-03-22T22:39:52.386Z",
+  "updatedAt": "2026-04-02T15:47:04.014Z",
   "markets": {
     "1": {
       "marketId": "1",
       "joinDeadline": 1774210295,
       "lastKnownState": "Open",
-      "lastSeenAt": "2026-03-22T22:39:52.386Z",
-      "lastAttemptAt": "2026-03-22T22:39:52.386Z",
+      "lastSeenAt": "2026-04-02T15:47:02.611Z",
+      "lastAttemptAt": "2026-04-02T15:47:02.611Z",
+      "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
+    },
+    "2": {
+      "marketId": "2",
+      "joinDeadline": 1775115606,
+      "lastKnownState": "Open",
+      "lastSeenAt": "2026-04-02T15:47:02.919Z",
+      "lastAttemptAt": "2026-04-02T15:47:02.919Z",
+      "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
+    },
+    "3": {
+      "marketId": "3",
+      "joinDeadline": 1775117549,
+      "lastKnownState": "Open",
+      "lastSeenAt": "2026-04-02T15:47:03.145Z",
+      "lastAttemptAt": "2026-04-02T15:47:03.145Z",
+      "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
+    },
+    "4": {
+      "marketId": "4",
+      "joinDeadline": 1775118152,
+      "lastKnownState": "Open",
+      "lastSeenAt": "2026-04-02T15:47:03.347Z",
+      "lastAttemptAt": "2026-04-02T15:47:03.347Z",
+      "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
+    },
+    "5": {
+      "marketId": "5",
+      "joinDeadline": 1775127078,
+      "lastKnownState": "Open",
+      "lastSeenAt": "2026-04-02T15:47:03.610Z",
+      "lastAttemptAt": "2026-04-02T15:47:03.610Z",
+      "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
+    },
+    "6": {
+      "marketId": "6",
+      "joinDeadline": 1775130302,
+      "lastKnownState": "Open",
+      "lastSeenAt": "2026-04-02T15:47:04.014Z",
+      "lastAttemptAt": "2026-04-02T15:47:04.014Z",
       "lastError": "Missing PRAGMA_ORACLE_ADDRESS"
     }
   }
