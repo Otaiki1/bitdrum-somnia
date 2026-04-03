@@ -1,0 +1,20 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+remappings = [
+  "@openzeppelin/contracts=lib/openzeppelin-contracts/contracts",
+]
+solc_version = "0.8.20"
+
+[rpc_endpoints]
+shannon = "https://dream-rpc.somnia.network"
+mainnet = "https://api.infra.mainnet.somnia.network"
+
+[etherscan]
+shannon = { key = "", url = "https://shannon-explorer.somnia.network/api" }
+mainnet = { key = "", url = "https://explorer.somnia.network/api" }
+
+[fmt]
+line_length = 120
+wrap_comments = true
