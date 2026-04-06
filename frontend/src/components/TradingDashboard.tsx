@@ -200,7 +200,7 @@ export const TradingDashboard = () => {
       return response.json();
     },
     enabled: Boolean(viewerAddress),
-    refetchInterval: 60_000,
+    refetchInterval: 300_000, // WS position stream is primary; this is a slow safety-net
   });
 
   useEffect(() => {

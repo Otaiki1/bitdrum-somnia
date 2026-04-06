@@ -63,7 +63,7 @@ export const TradePanel = ({
       return response.json();
     },
     enabled: Boolean(selectedMarket?.id),
-    refetchInterval: selectedMarket?.id ? 30_000 : false,
+    refetchInterval: false, // WS invalidations drive refreshes; no background polling needed
   });
 
   const signalQuery = useQuery({
@@ -77,7 +77,7 @@ export const TradePanel = ({
       if (!response.ok) return null;
       return response.json();
     },
-    refetchInterval: selectedMarket?.id ? 30_000 : 30_000,
+    refetchInterval: 120_000, // precomputed at market open; slow fallback refresh
   });
 
   const pomQuery = useQuery({
@@ -90,7 +90,7 @@ export const TradePanel = ({
       if (!response.ok) return null;
       return response.json();
     },
-    refetchInterval: selectedMarket?.id ? 30_000 : 30_000,
+    refetchInterval: 120_000, // mirrors signal interval; slow fallback
   });
 
   const activeMarket = selectedMarket?.id
