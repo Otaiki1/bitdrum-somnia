@@ -28,8 +28,9 @@ export const ACTIVE_SOMNIA_NETWORK =
 export const PREDICTION_MARKET_ADDRESS =
   process.env.NEXT_PUBLIC_PREDICTION_MARKET_ADDR || "0x0000000000000000000000000000000000000000";
 
-export const WBTC_ADDRESS =
-  process.env.NEXT_PUBLIC_WBTC_ADDR || "0x0000000000000000000000000000000000000000";
+/** Wrapped STT — the ERC-20 staking token for BitDrum on Somnia. */
+export const WSTT_ADDRESS =
+  process.env.NEXT_PUBLIC_WSTT_ADDR || "0x0000000000000000000000000000000000000000";
 
 export const SOMNIA_EXPLORER_BASE_URL =
   ACTIVE_SOMNIA_NETWORK.blockExplorerUrls[0] || "https://shannon-explorer.somnia.network";

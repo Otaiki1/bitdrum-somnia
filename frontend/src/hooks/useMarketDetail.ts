@@ -6,7 +6,7 @@ import { readMarketAndBalance, readMarketOnchain, type OnchainMarket } from '../
 
 /**
  * Reads live market state directly from the contract via viem multicall.
- * When a wallet address is provided the WBTC balance is fetched in the
+ * When a wallet address is provided the WSTT balance is fetched in the
  * same round-trip. Falls back to the gateway if the contract read fails.
  */
 export function useMarketDetail(

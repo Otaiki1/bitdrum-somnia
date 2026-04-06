@@ -176,7 +176,7 @@ export const MarketFeed = ({
               <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
                 <div>
                   Stake
-                  <div className="mt-1 font-mono text-white">{formatTokenAmount(item.stake_amount)} WBTC</div>
+                  <div className="mt-1 font-mono text-white">{formatTokenAmount(item.stake_amount)} STT</div>
                 </div>
                 <div>
                   Pool

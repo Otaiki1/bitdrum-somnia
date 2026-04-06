@@ -15,13 +15,14 @@ cd contracts
 export PRIVATE_KEY=0x<deployer_private_key>
 forge script script/Deploy.s.sol \
   --rpc-url https://dream-rpc.somnia.network \
-  --broadcast --verify
+  --broadcast --verify \
+  --value 100ether          # deployer sends 100 STT to seed the vault
 ```
 
 - [ ] Run the deploy script — it will print all 7 addresses
 - [ ] Record the addresses:
   ```
-  WBTC_ADDRESS=
+  WSTT_ADDRESS=               # WrappedSTT — the staking token
   PREDICTION_MARKET_ADDRESS=
   SETTLEMENT_ENGINE_ADDRESS=
   SUBSCRIPTIONS_CONTRACT_ADDRESS=
@@ -29,7 +30,8 @@ forge script script/Deploy.s.sol \
   LIQUIDITY_VAULT_ADDRESS=
   TREASURY_ADDRESS=
   ```
-- [ ] Mint test WBTC to your test wallets: call `MockERC20.mint(address, amount)` on the deployed WBTC
+- [ ] Confirm the vault is seeded: `LiquidityVault.availableLiquidity()` should return `100 * 10^18`
+- [ ] Users fund themselves from the Somnia faucet — **no minting needed**, they stake native STT which the frontend auto-wraps to WSTT before each trade
 
 ---
 
@@ -104,7 +106,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
 NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
 NEXT_PUBLIC_CHAIN_ID=50312
 NEXT_PUBLIC_PREDICTION_MARKET_ADDR=<from Phase 1>
-NEXT_PUBLIC_WBTC_ADDR=<from Phase 1>
+NEXT_PUBLIC_WSTT_ADDR=<from Phase 1>      # WrappedSTT address
 NEXT_PUBLIC_PRIVY_APP_ID=<your privy app id>
 ```
 

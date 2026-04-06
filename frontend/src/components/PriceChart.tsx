@@ -235,7 +235,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                 </span>
               </div>
               <p className="mt-2 text-[11px] font-mono text-slate-300">
-                {execution.entryPrice ? `$${execution.entryPrice.toFixed(2)}` : 'Awaiting price'} · {execution.stake} WBTC
+                {execution.entryPrice ? `$${execution.entryPrice.toFixed(2)}` : 'Awaiting price'} · {execution.stake} STT
               </p>
             </div>
           ))}

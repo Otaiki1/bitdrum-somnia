@@ -101,7 +101,7 @@ function OutcomeModal({
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
             <p className="text-[9px] font-black uppercase tracking-[0.28em] text-slate-500">Stake</p>
             <p className="mt-1 font-mono text-sm font-bold text-white">
-              {formatTokenAmount(position.stake_amount)} WBTC
+              {formatTokenAmount(position.stake_amount)} STT
             </p>
           </div>
           <div
@@ -120,7 +120,7 @@ function OutcomeModal({
               }`}
             >
               {isWin || isDraw ? '+' : ''}
-              {formatTokenAmount(position.net_pnl)} WBTC
+              {formatTokenAmount(position.net_pnl)} STT
             </p>
           </div>
         </div>
@@ -225,7 +225,7 @@ export const TradingDashboard = () => {
         time: Math.floor(new Date(t.submittedAt).getTime() / 1000),
         price: t.entryPrice,
         direction: t.direction,
-        label: `${t.direction} ${t.stake} WBTC`,
+        label: `${t.direction} ${t.stake} STT`,
       });
     }
 
@@ -450,7 +450,7 @@ export const TradingDashboard = () => {
                   <TrendingDown className="h-4 w-4 text-rose-400" />
                 )}
                 <span className="font-black uppercase tracking-widest text-white">
-                  {t.direction} · {t.stake} WBTC
+                  {t.direction} · {t.stake} STT
                 </span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
@@ -509,7 +509,7 @@ export const TradingDashboard = () => {
                   Win Rate {((positionSummary?.win_rate || 0) * 100).toFixed(1)}%
                 </span>
                 <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">
-                  PnL {livePnL} WBTC
+                  PnL {livePnL} STT
                 </span>
               </div>
             </div>
@@ -573,16 +573,16 @@ export const TradingDashboard = () => {
                     <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-slate-400">
                       <div>
                         Stake
-                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.stake_amount)} WBTC</div>
+                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.stake_amount)} STT</div>
                       </div>
                       <div>
                         Payout
-                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.expected_payout)} WBTC</div>
+                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.expected_payout)} STT</div>
                       </div>
                       <div>
                         Net PnL
                         <div className={`mt-1 font-mono ${Number(position.net_pnl) > 0 ? 'text-emerald-300' : Number(position.net_pnl) < 0 ? 'text-rose-300' : 'text-white'}`}>
-                          {formatTokenAmount(position.net_pnl)} WBTC
+                          {formatTokenAmount(position.net_pnl)} STT
                         </div>
                       </div>
                     </div>

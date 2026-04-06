@@ -48,7 +48,7 @@ export const TradePanel = ({
   const queryClient = useQueryClient();
   const { wallet, authenticated, connecting, connect } = useBitdrumWallet();
 
-  const [stake, setStake] = useState('0.001');
+  const [stake, setStake] = useState('1');
   const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
   const [isPending, setIsPending] = useState(false);
   const [lastRecord, setLastRecord] = useState<TradeExecutionRecord | null>(null);
@@ -80,7 +80,7 @@ export const TradePanel = ({
     ? { ...selectedMarket, ...marketDetailData?.market }
     : null;
 
-  const wbtcBalance = marketDetailData?.wbtcBalance ?? null;
+  const wsttBalance = marketDetailData?.wsttBalance ?? null;
   const signal = signalData?.signal;
   const pom = pomData?.pom;
 
@@ -112,7 +112,7 @@ export const TradePanel = ({
       return;
     }
     if (!stake || Number(stake) <= 0 || Number.isNaN(Number(stake))) {
-      setError('Enter a valid WBTC stake.');
+      setError('Enter a valid STT stake.');
       return;
     }
 
@@ -239,11 +239,11 @@ export const TradePanel = ({
           <div className="grid grid-cols-2 gap-3 text-xs text-slate-300">
             <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">UP Pool</p>
-              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.up_pool ?? activeMarket.long_pool)} WBTC</p>
+              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.up_pool ?? activeMarket.long_pool)} STT</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">DOWN Pool</p>
-              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.down_pool ?? activeMarket.short_pool)} WBTC</p>
+              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.down_pool ?? activeMarket.short_pool)} STT</p>
             </div>
             {activeMarket.duration_seconds ? (
               <div>
@@ -278,11 +278,11 @@ export const TradePanel = ({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <label className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-            Stake (WBTC)
+            Stake (STT)
           </label>
-          {wbtcBalance !== null ? (
+          {wsttBalance !== null ? (
             <span className="text-[10px] font-mono text-slate-500">
-              Balance: {formatTokenAmount(wbtcBalance.toString())} WBTC
+              Balance: {formatTokenAmount(wsttBalance.toString())} STT
             </span>
           ) : null}
         </div>
@@ -334,11 +334,11 @@ export const TradePanel = ({
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
           <span>Projected Profit</span>
-          <span className="text-emerald-300">+{projectedProfit.toFixed(6)} WBTC</span>
+          <span className="text-emerald-300">+{projectedProfit.toFixed(6)} STT</span>
         </div>
         <div className="text-xs text-slate-400">
           If the trade settles in your favour at {(currentPomBps / 100).toFixed(2)}%, your payout
-          estimate is {(Number(stake || '0') + projectedProfit).toFixed(6)} WBTC.
+          estimate is {(Number(stake || '0') + projectedProfit).toFixed(6)} STT.
         </div>
       </div>
 

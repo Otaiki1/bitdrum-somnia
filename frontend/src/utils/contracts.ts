@@ -12,7 +12,7 @@ import { createPublicClient, defineChain, http, type PublicClient } from 'viem';
 import {
   ACTIVE_SOMNIA_NETWORK,
   PREDICTION_MARKET_ADDRESS,
-  WBTC_ADDRESS,
+  WSTT_ADDRESS,
 } from './somnia';
 
 const GET_MARKET_ABI = [
@@ -207,12 +207,12 @@ export async function readMarketsOnchain(marketIds: string[]): Promise<OnchainMa
 }
 
 /**
- * Read the user's WBTC balance directly from the ERC-20 contract.
+ * Read the user's WSTT balance directly from the ERC-20 contract.
  */
-export async function readWbtcBalance(address: `0x${string}`): Promise<bigint> {
+export async function readWsttBalance(address: `0x${string}`): Promise<bigint> {
   const client = getPublicClient();
   return client.readContract({
-    address: WBTC_ADDRESS as `0x${string}`,
+    address: WSTT_ADDRESS as `0x${string}`,
     abi: ERC20_BALANCE_ABI,
     functionName: 'balanceOf',
     args: [address],
@@ -220,7 +220,7 @@ export async function readWbtcBalance(address: `0x${string}`): Promise<bigint> {
 }
 
 /**
- * Batch-read market state + user WBTC balance in one multicall.
+ * Batch-read market state + user WSTT balance in one multicall.
  * Used by TradePanel to update pool sizes and balance before execution.
  */
 export async function readMarketAndBalance(
@@ -229,7 +229,7 @@ export async function readMarketAndBalance(
 ): Promise<{ market: OnchainMarket; wbtcBalance: bigint }> {
   const client = getPublicClient();
   const contractAddr = PREDICTION_MARKET_ADDRESS as `0x${string}`;
-  const wbtcAddr = WBTC_ADDRESS as `0x${string}`;
+  const wbtcAddr = WSTT_ADDRESS as `0x${string}`;
 
   const [marketResult, balanceResult] = await client.multicall({
     contracts: [
