@@ -1,36 +1,95 @@
-import { BrowserProvider, Contract, parseUnits } from "../../vendor/ethers/lib.esm/index.js";
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  parseUnits,
+  defineChain,
+  type WalletClient,
+  type PublicClient,
+} from 'viem';
 import {
   ACTIVE_SOMNIA_NETWORK,
   PREDICTION_MARKET_ADDRESS,
   SOMNIA_EXPLORER_BASE_URL,
   WBTC_ADDRESS,
-} from "./somnia";
+} from './somnia';
 
 declare global {
   interface Window {
     ethereum?: {
       request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
+      on?(event: string, handler: (...args: unknown[]) => void): void;
     };
   }
 }
 
 const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function balanceOf(address account) view returns (uint256)",
-];
+  {
+    name: 'approve',
+    type: 'function',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    name: 'balanceOf',
+    type: 'function',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+] as const;
 
 const MARKET_ABI = [
-  "function openMarket(uint8 direction, uint256 duration, uint256 stakeAmount, tuple(uint128 price, uint128 timestamp) strikeData) returns (uint256)",
-  "function joinMarket(uint256 marketId, uint8 direction, uint256 stakeAmount)",
-  "function claimPayout(uint256 marketId)",
-];
+  {
+    name: 'openMarket',
+    type: 'function',
+    inputs: [
+      { name: 'direction', type: 'uint8' },
+      { name: 'duration', type: 'uint256' },
+      { name: 'stakeAmount', type: 'uint256' },
+      {
+        name: 'strikeData',
+        type: 'tuple',
+        components: [
+          { name: 'price', type: 'uint128' },
+          { name: 'timestamp', type: 'uint128' },
+        ],
+      },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    name: 'joinMarket',
+    type: 'function',
+    inputs: [
+      { name: 'marketId', type: 'uint256' },
+      { name: 'direction', type: 'uint8' },
+      { name: 'stakeAmount', type: 'uint256' },
+    ],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    name: 'claimPayout',
+    type: 'function',
+    inputs: [{ name: 'marketId', type: 'uint256' }],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+] as const;
 
-export type BitdrumDirection = "UP" | "DOWN";
-export type TradeExecutionStatus = "submitted" | "confirmed" | "failed";
+export type BitdrumDirection = 'UP' | 'DOWN';
+export type TradeExecutionStatus = 'submitted' | 'confirmed' | 'failed';
 
 export type TradeExecutionRecord = {
   id: string;
-  kind: "OPEN" | "JOIN" | "CLAIM";
+  kind: 'OPEN' | 'JOIN' | 'CLAIM';
   marketId: string | null;
   direction: BitdrumDirection;
   stake: string;
@@ -89,8 +148,9 @@ export type PositionRecord = {
 };
 
 export type BitdrumWallet = {
-  address: string;
-  provider: BrowserProvider;
+  address: `0x${string}`;
+  walletClient: WalletClient;
+  publicClient: PublicClient;
   label: string;
   disconnect(): Promise<void>;
   openProfile(): Promise<void>;
@@ -102,29 +162,42 @@ type BitdrumTx = {
   wait(): Promise<unknown>;
 };
 
-function directionToEnum(direction: BitdrumDirection) {
-  return direction === "UP" ? 0 : 1;
+function directionToEnum(direction: BitdrumDirection): number {
+  return direction === 'UP' ? 0 : 1;
 }
 
-async function ensureSomniaChain(provider: BrowserProvider) {
-  const network = await provider.getNetwork();
+function buildSomniaChain() {
+  return defineChain({
+    id: ACTIVE_SOMNIA_NETWORK.chainId,
+    name: ACTIVE_SOMNIA_NETWORK.chainName,
+    nativeCurrency: ACTIVE_SOMNIA_NETWORK.nativeCurrency,
+    rpcUrls: {
+      default: { http: ACTIVE_SOMNIA_NETWORK.rpcUrls as string[] },
+      public: { http: ACTIVE_SOMNIA_NETWORK.rpcUrls as string[] },
+    },
+    blockExplorers: {
+      default: { name: 'Somnia Explorer', url: ACTIVE_SOMNIA_NETWORK.blockExplorerUrls[0] },
+    },
+  });
+}
 
-  if (Number(network.chainId) === ACTIVE_SOMNIA_NETWORK.chainId) {
-    return;
-  }
+async function ensureSomniaChain(walletClient: WalletClient) {
+  const chainId = await walletClient.getChainId();
+  if (chainId === ACTIVE_SOMNIA_NETWORK.chainId) return;
 
   try {
-    await provider.send("wallet_switchEthereumChain", [
-      { chainId: ACTIVE_SOMNIA_NETWORK.chainIdHex },
-    ]);
+    await walletClient.switchChain({ id: ACTIVE_SOMNIA_NETWORK.chainId });
   } catch {
-    await provider.send("wallet_addEthereumChain", [ACTIVE_SOMNIA_NETWORK]);
+    await (window.ethereum as any).request({
+      method: 'wallet_addEthereumChain',
+      params: [ACTIVE_SOMNIA_NETWORK],
+    });
   }
 }
 
 function assertWalletSupport() {
   if (!window.ethereum) {
-    throw new Error("No EVM wallet detected. Install MetaMask or another Somnia-compatible wallet.");
+    throw new Error('No EVM wallet detected. Install MetaMask or another Somnia-compatible wallet.');
   }
 }
 
@@ -133,34 +206,50 @@ function buildExplorerUrl(txHash: string) {
 }
 
 async function approveWbtc(wallet: BitdrumWallet, amount: bigint) {
-  const signer = await wallet.provider.getSigner();
-  const wbtc = new Contract(WBTC_ADDRESS, ERC20_ABI, signer);
-  const approvalTx = await wbtc.approve(PREDICTION_MARKET_ADDRESS, amount);
-  await approvalTx.wait();
+  const hash = await wallet.walletClient.writeContract({
+    address: WBTC_ADDRESS as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'approve',
+    args: [PREDICTION_MARKET_ADDRESS as `0x${string}`, amount],
+    account: wallet.address,
+    chain: buildSomniaChain(),
+  });
+  await wallet.publicClient.waitForTransactionReceipt({ hash });
 }
 
 export async function connectBitdrumWallet(): Promise<BitdrumWallet> {
   assertWalletSupport();
 
-  const provider = new BrowserProvider(window.ethereum!);
-  await ensureSomniaChain(provider);
+  const chain = buildSomniaChain();
 
-  const accounts = (await provider.send("eth_requestAccounts", [])) as string[];
-  const address = accounts[0];
+  const walletClient = createWalletClient({
+    chain,
+    transport: custom(window.ethereum!),
+  });
+
+  const publicClient = createPublicClient({
+    chain,
+    transport: http(ACTIVE_SOMNIA_NETWORK.rpcUrls[0]),
+  });
+
+  await ensureSomniaChain(walletClient);
+
+  const [address] = await walletClient.requestAddresses();
 
   if (!address) {
-    throw new Error("Wallet connection did not return an account.");
+    throw new Error('Wallet connection did not return an account.');
   }
 
   return {
     address,
-    provider,
-    label: "Injected EVM Wallet",
+    walletClient,
+    publicClient,
+    label: 'Injected EVM Wallet',
     async disconnect() {
       return;
     },
     async openProfile() {
-      window.open(`${SOMNIA_EXPLORER_BASE_URL}/address/${address}`, "_blank", "noopener,noreferrer");
+      window.open(`${SOMNIA_EXPLORER_BASE_URL}/address/${address}`, '_blank', 'noopener,noreferrer');
     },
   };
 }
@@ -172,23 +261,31 @@ export async function openMarket(params: {
   durationSeconds: number;
   currentPrice: number;
 }): Promise<BitdrumTx> {
-  const signer = await params.wallet.provider.getSigner();
-  const market = new Contract(PREDICTION_MARKET_ADDRESS, MARKET_ABI, signer);
   const amount = parseUnits(params.stake, 8);
   const strikePrice = BigInt(Math.round(params.currentPrice * 10 ** 8));
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = BigInt(Math.floor(Date.now() / 1000));
+  const chain = buildSomniaChain();
 
   await approveWbtc(params.wallet, amount);
 
-  const tx = await market.openMarket(directionToEnum(params.direction), params.durationSeconds, amount, {
-    price: strikePrice,
-    timestamp,
+  const hash = await params.wallet.walletClient.writeContract({
+    address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
+    abi: MARKET_ABI,
+    functionName: 'openMarket',
+    args: [
+      directionToEnum(params.direction),
+      BigInt(params.durationSeconds),
+      amount,
+      { price: strikePrice, timestamp },
+    ],
+    account: params.wallet.address,
+    chain,
   });
 
   return {
-    hash: tx.hash,
-    explorerUrl: buildExplorerUrl(tx.hash),
-    wait: () => tx.wait(),
+    hash,
+    explorerUrl: buildExplorerUrl(hash),
+    wait: () => params.wallet.publicClient.waitForTransactionReceipt({ hash }),
   };
 }
 
@@ -198,18 +295,24 @@ export async function joinMarket(params: {
   direction: BitdrumDirection;
   stake: string;
 }): Promise<BitdrumTx> {
-  const signer = await params.wallet.provider.getSigner();
-  const market = new Contract(PREDICTION_MARKET_ADDRESS, MARKET_ABI, signer);
   const amount = parseUnits(params.stake, 8);
+  const chain = buildSomniaChain();
 
   await approveWbtc(params.wallet, amount);
 
-  const tx = await market.joinMarket(params.marketId, directionToEnum(params.direction), amount);
+  const hash = await params.wallet.walletClient.writeContract({
+    address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
+    abi: MARKET_ABI,
+    functionName: 'joinMarket',
+    args: [BigInt(params.marketId), directionToEnum(params.direction), amount],
+    account: params.wallet.address,
+    chain,
+  });
 
   return {
-    hash: tx.hash,
-    explorerUrl: buildExplorerUrl(tx.hash),
-    wait: () => tx.wait(),
+    hash,
+    explorerUrl: buildExplorerUrl(hash),
+    wait: () => params.wallet.publicClient.waitForTransactionReceipt({ hash }),
   };
 }
 
@@ -217,26 +320,33 @@ export async function claimMarket(params: {
   wallet: BitdrumWallet;
   marketId: string;
 }): Promise<BitdrumTx> {
-  const signer = await params.wallet.provider.getSigner();
-  const market = new Contract(PREDICTION_MARKET_ADDRESS, MARKET_ABI, signer);
-  const tx = await market.claimPayout(params.marketId);
+  const chain = buildSomniaChain();
+
+  const hash = await params.wallet.walletClient.writeContract({
+    address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
+    abi: MARKET_ABI,
+    functionName: 'claimPayout',
+    args: [BigInt(params.marketId)],
+    account: params.wallet.address,
+    chain,
+  });
 
   return {
-    hash: tx.hash,
-    explorerUrl: buildExplorerUrl(tx.hash),
-    wait: () => tx.wait(),
+    hash,
+    explorerUrl: buildExplorerUrl(hash),
+    wait: () => params.wallet.publicClient.waitForTransactionReceipt({ hash }),
   };
 }
 
 export function formatTokenAmount(rawAmount: string | null | undefined, decimals = 8, precision = 4) {
-  const value = BigInt(rawAmount || "0");
+  const value = BigInt(rawAmount || '0');
   const isNegative = value < BigInt(0);
   const absoluteValue = isNegative ? value * BigInt(-1) : value;
   const divisor = BigInt(10) ** BigInt(decimals);
   const whole = absoluteValue / divisor;
   const fraction = absoluteValue % divisor;
-  const paddedFraction = fraction.toString().padStart(decimals, "0").slice(0, precision);
-  const formatted = `${whole.toString()}.${paddedFraction}`.replace(/\.$/, "");
+  const paddedFraction = fraction.toString().padStart(decimals, '0').slice(0, precision);
+  const formatted = `${whole.toString()}.${paddedFraction}`.replace(/\.$/, '');
   return isNegative ? `-${formatted}` : formatted;
 }
 
@@ -245,15 +355,15 @@ export function shortAddress(address: string) {
 }
 
 export function formatTimeframe(durationSeconds: number | null | undefined) {
-  if (durationSeconds === 30) return "30s";
-  if (durationSeconds === 60) return "1m";
-  if (durationSeconds === 300) return "5m";
-  if (!durationSeconds) return "--";
+  if (durationSeconds === 30) return '30s';
+  if (durationSeconds === 60) return '1m';
+  if (durationSeconds === 300) return '5m';
+  if (!durationSeconds) return '--';
   return `${durationSeconds}s`;
 }
 
 export function formatOraclePrice(rawAmount: string | null | undefined, decimals = 8) {
-  const numeric = Number(rawAmount || "0");
+  const numeric = Number(rawAmount || '0');
   if (!Number.isFinite(numeric) || numeric === 0) {
     return null;
   }
