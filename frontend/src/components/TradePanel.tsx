@@ -80,7 +80,7 @@ export const TradePanel = ({
     ? { ...selectedMarket, ...marketDetailData?.market }
     : null;
 
-  const wsttBalance = marketDetailData?.wsttBalance ?? null;
+  const wsttBalance = marketDetailData?.sttBalance ?? null;
   const signal = signalData?.signal;
   const pom = pomData?.pom;
 

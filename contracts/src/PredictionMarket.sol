@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {
     Direction,
@@ -15,14 +13,11 @@ import {
 import {ILiquidityVault} from "./interfaces/ILiquidityVault.sol";
 
 contract PredictionMarket is Ownable {
-    using SafeERC20 for IERC20;
-
     uint256 public constant MIN_POM_BPS = 500;
     uint256 public constant MAX_POM_BPS = 7000;
     uint256 public constant PROTOCOL_FEE_BPS = 200;
     uint256 public constant ORACLE_MAX_AGE = 30;
 
-    IERC20 public immutable wbtc;
     address public immutable vault;
     address public immutable treasury;
 
@@ -76,13 +71,15 @@ contract PredictionMarket is Ownable {
     error OraclePriceStale();
     error InvalidOraclePrice();
     error Unauthorized();
+    error TransferFailed();
 
-    constructor(address wbtc_, address vault_, address treasury_, address owner_) Ownable(owner_) {
-        require(wbtc_ != address(0) && vault_ != address(0) && treasury_ != address(0), "zero address");
-        wbtc = IERC20(wbtc_);
+    constructor(address vault_, address treasury_, address owner_) Ownable(owner_) {
+        require(vault_ != address(0) && treasury_ != address(0), "zero address");
         vault = vault_;
         treasury = treasury_;
     }
+
+    receive() external payable {}
 
     modifier onlySettlementEngine() {
         if (msg.sender != settlementEngine) {
@@ -100,13 +97,12 @@ contract PredictionMarket is Ownable {
     function openMarket(
         Direction direction,
         uint256 duration,
-        uint256 stakeAmount,
         OracleData calldata strikeData
-    ) external returns (uint256 marketId) {
+    ) external payable returns (uint256 marketId) {
         if (!_isSupportedDuration(duration)) {
             revert InvalidDuration();
         }
-        if (stakeAmount == 0) {
+        if (msg.value == 0) {
             revert InvalidStake();
         }
 
@@ -129,12 +125,12 @@ contract PredictionMarket is Ownable {
         market.state = MarketState.OPEN;
         market.outcome = Outcome.PENDING;
 
-        _recordStake(marketId, msg.sender, direction, stakeAmount);
+        _recordStake(marketId, msg.sender, direction, msg.value);
 
-        emit MarketOpened(marketId, msg.sender, direction, stakeAmount, duration, strikeData.price);
+        emit MarketOpened(marketId, msg.sender, direction, msg.value, duration, strikeData.price);
     }
 
-    function joinMarket(uint256 marketId, Direction direction, uint256 stakeAmount) external {
+    function joinMarket(uint256 marketId, Direction direction) external payable {
         Market storage market = _markets[marketId];
 
         if (market.state != MarketState.OPEN) {
@@ -143,13 +139,13 @@ contract PredictionMarket is Ownable {
         if (block.timestamp > market.joiningWindowEnd) {
             revert JoiningWindowClosed();
         }
-        if (stakeAmount == 0) {
+        if (msg.value == 0) {
             revert InvalidStake();
         }
 
-        _recordStake(marketId, msg.sender, direction, stakeAmount);
+        _recordStake(marketId, msg.sender, direction, msg.value);
 
-        emit MarketJoined(marketId, msg.sender, direction, stakeAmount);
+        emit MarketJoined(marketId, msg.sender, direction, msg.value);
     }
 
     function setPomProfitBps(uint256 marketId, uint256 pomProfitBps) external {
@@ -207,7 +203,7 @@ contract PredictionMarket is Ownable {
 
         if (outcome == Outcome.DRAW) {
             if (market.vaultCommitted > 0) {
-                wbtc.safeTransfer(vault, market.vaultCommitted);
+                _nativeTransfer(vault, market.vaultCommitted);
             }
         } else {
             uint256 totalPool = market.upPool + market.downPool;
@@ -218,10 +214,10 @@ contract PredictionMarket is Ownable {
             market.sweptToVault = sweptToVault;
 
             if (feeAmount > 0) {
-                wbtc.safeTransfer(treasury, feeAmount);
+                _nativeTransfer(treasury, feeAmount);
             }
             if (sweptToVault > 0) {
-                wbtc.safeTransfer(vault, sweptToVault);
+                _nativeTransfer(vault, sweptToVault);
             }
         }
 
@@ -258,7 +254,7 @@ contract PredictionMarket is Ownable {
 
         if (market.outcome == Outcome.DRAW) {
             payout = stake.amount;
-            wbtc.safeTransfer(msg.sender, payout);
+            _nativeTransfer(msg.sender, payout);
         } else if (_isWinningStake(stake.direction, market.outcome)) {
             profit = (stake.amount * market.pomProfitBps) / 10_000;
             payout = stake.amount + profit;
@@ -292,8 +288,8 @@ contract PredictionMarket is Ownable {
         _hasJoined[marketId][participant] = true;
         _participants[marketId].push(participant);
 
-        wbtc.safeTransferFrom(participant, address(this), stakeAmount);
-
+        // Native STT already received via msg.value — no token transfer needed.
+        // Ask vault to match the user's stake on the opposite side.
         Direction vaultDirection = _opposite(direction);
         ILiquidityVault(vault).fundMarket(marketId, vaultDirection, stakeAmount, address(this));
 
@@ -315,6 +311,11 @@ contract PredictionMarket is Ownable {
             market.downPool += stakeAmount;
             market.upPool += stakeAmount;
         }
+    }
+
+    function _nativeTransfer(address to, uint256 amount) internal {
+        (bool ok,) = payable(to).call{value: amount}("");
+        if (!ok) revert TransferFailed();
     }
 
     function _assertFreshOracle(OracleData calldata oracleData) internal view {

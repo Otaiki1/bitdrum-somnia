@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Direction} from "./Types.sol";
 import {ILiquidityVault} from "./interfaces/ILiquidityVault.sol";
 
 contract LiquidityVault is Ownable, ILiquidityVault {
-    using SafeERC20 for IERC20;
-
-    IERC20 public immutable wbtc;
     address public predictionMarket;
 
     mapping(uint256 => uint256) public committedByMarket;
@@ -20,11 +15,11 @@ contract LiquidityVault is Ownable, ILiquidityVault {
     event WinnerPaid(address indexed recipient, uint256 principal, uint256 profit);
 
     error Unauthorized();
+    error TransferFailed();
 
-    constructor(address wbtc_, address owner_) Ownable(owner_) {
-        require(wbtc_ != address(0), "zero token");
-        wbtc = IERC20(wbtc_);
-    }
+    constructor(address owner_) Ownable(owner_) {}
+
+    receive() external payable {}
 
     modifier onlyPredictionMarket() {
         if (msg.sender != predictionMarket) {
@@ -39,25 +34,28 @@ contract LiquidityVault is Ownable, ILiquidityVault {
         emit PredictionMarketUpdated(predictionMarket_);
     }
 
-    function deposit(uint256 amount) external onlyOwner {
-        wbtc.safeTransferFrom(msg.sender, address(this), amount);
-    }
+    function deposit() external payable onlyOwner {}
 
     function fundMarket(uint256 marketId, Direction direction, uint256 amount, address recipient)
         external
         onlyPredictionMarket
     {
         committedByMarket[marketId] += amount;
-        wbtc.safeTransfer(recipient, amount);
+        _nativeTransfer(recipient, amount);
         emit MarketFunded(marketId, direction, amount, recipient);
     }
 
     function payWinner(address recipient, uint256 principal, uint256 profit) external onlyPredictionMarket {
-        wbtc.safeTransfer(recipient, principal + profit);
+        _nativeTransfer(recipient, principal + profit);
         emit WinnerPaid(recipient, principal, profit);
     }
 
     function availableLiquidity() external view returns (uint256) {
-        return wbtc.balanceOf(address(this));
+        return address(this).balance;
+    }
+
+    function _nativeTransfer(address to, uint256 amount) internal {
+        (bool ok,) = payable(to).call{value: amount}("");
+        if (!ok) revert TransferFailed();
     }
 }

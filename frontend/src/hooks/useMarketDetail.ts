@@ -13,24 +13,24 @@ export function useMarketDetail(
   marketId: string | null | undefined,
   walletAddress?: `0x${string}` | null,
 ) {
-  return useQuery<{ market: OnchainMarket; wbtcBalance: bigint | null }>({
+  return useQuery<{ market: OnchainMarket; sttBalance: bigint | null }>({
     queryKey: ['market-detail-onchain', marketId, walletAddress],
     queryFn: async () => {
-      if (!marketId) return { market: null as any, wbtcBalance: null };
+      if (!marketId) return { market: null as any, sttBalance: null };
 
       try {
         if (walletAddress) {
           const { market, wbtcBalance } = await readMarketAndBalance(marketId, walletAddress);
-          return { market, wbtcBalance };
+          return { market, sttBalance: wbtcBalance };
         }
         const market = await readMarketOnchain(marketId);
-        return { market, wbtcBalance: null };
+        return { market, sttBalance: null };
       } catch {
         // Fallback to gateway if RPC is unavailable
         const response = await fetch(`${API_BASE}/markets/${marketId}`);
         if (!response.ok) throw new Error('Unable to load market');
         const data = await response.json();
-        return { market: data.market as OnchainMarket, wbtcBalance: null };
+        return { market: data.market as OnchainMarket, sttBalance: null };
       }
     },
     enabled: Boolean(marketId),

@@ -13,7 +13,6 @@ import {
   ACTIVE_SOMNIA_NETWORK,
   PREDICTION_MARKET_ADDRESS,
   SOMNIA_EXPLORER_BASE_URL,
-  WSTT_ADDRESS,
 } from './somnia';
 
 declare global {
@@ -25,40 +24,8 @@ declare global {
   }
 }
 
-/** STT / WSTT use 18 decimals — same as the native Somnia token. */
+/** Native STT uses 18 decimals. */
 export const STT_DECIMALS = 18;
-
-const ERC20_ABI = [
-  {
-    name: 'approve',
-    type: 'function',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'nonpayable',
-  },
-  {
-    name: 'balanceOf',
-    type: 'function',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-  },
-] as const;
-
-/** WrappedSTT deposit() — send native STT, receive WSTT 1:1. */
-const WSTT_ABI = [
-  ...ERC20_ABI,
-  {
-    name: 'deposit',
-    type: 'function',
-    inputs: [],
-    outputs: [],
-    stateMutability: 'payable',
-  },
-] as const;
 
 const MARKET_ABI = [
   {
@@ -67,7 +34,6 @@ const MARKET_ABI = [
     inputs: [
       { name: 'direction', type: 'uint8' },
       { name: 'duration', type: 'uint256' },
-      { name: 'stakeAmount', type: 'uint256' },
       {
         name: 'strikeData',
         type: 'tuple',
@@ -78,7 +44,7 @@ const MARKET_ABI = [
       },
     ],
     outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     name: 'joinMarket',
@@ -86,10 +52,9 @@ const MARKET_ABI = [
     inputs: [
       { name: 'marketId', type: 'uint256' },
       { name: 'direction', type: 'uint8' },
-      { name: 'stakeAmount', type: 'uint256' },
     ],
     outputs: [],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     name: 'claimPayout',
@@ -221,52 +186,6 @@ function buildExplorerUrl(txHash: string) {
   return `${SOMNIA_EXPLORER_BASE_URL}/tx/${txHash}`;
 }
 
-/**
- * Auto-wrap native STT → WSTT if the wallet doesn't have enough WSTT.
- * This means users never need to manually wrap — they just hold STT.
- */
-async function ensureWstt(wallet: BitdrumWallet, amount: bigint) {
-  const wsttBalance = await wallet.publicClient.readContract({
-    address: WSTT_ADDRESS as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: [wallet.address],
-  });
-
-  if (wsttBalance >= amount) return;
-
-  const needed = amount - wsttBalance;
-  const sttBalance = await wallet.publicClient.getBalance({ address: wallet.address });
-
-  if (sttBalance < needed) {
-    throw new Error(
-      `Insufficient STT. Need ${formatUnits(needed, STT_DECIMALS)} STT to wrap but only have ${formatUnits(sttBalance, STT_DECIMALS)} STT.`,
-    );
-  }
-
-  const hash = await wallet.walletClient.writeContract({
-    address: WSTT_ADDRESS as `0x${string}`,
-    abi: WSTT_ABI,
-    functionName: 'deposit',
-    value: needed,
-    account: wallet.address,
-    chain: buildSomniaChain(),
-  });
-  await wallet.publicClient.waitForTransactionReceipt({ hash });
-}
-
-async function approveWstt(wallet: BitdrumWallet, amount: bigint) {
-  const hash = await wallet.walletClient.writeContract({
-    address: WSTT_ADDRESS as `0x${string}`,
-    abi: ERC20_ABI,
-    functionName: 'approve',
-    args: [PREDICTION_MARKET_ADDRESS as `0x${string}`, amount],
-    account: wallet.address,
-    chain: buildSomniaChain(),
-  });
-  await wallet.publicClient.waitForTransactionReceipt({ hash });
-}
-
 export async function connectBitdrumWallet(): Promise<BitdrumWallet> {
   assertWalletSupport();
 
@@ -316,8 +235,12 @@ export async function openMarket(params: {
   const timestamp = BigInt(Math.floor(Date.now() / 1000));
   const chain = buildSomniaChain();
 
-  await ensureWstt(params.wallet, amount);
-  await approveWstt(params.wallet, amount);
+  const sttBalance = await params.wallet.publicClient.getBalance({ address: params.wallet.address });
+  if (sttBalance < amount) {
+    throw new Error(
+      `Insufficient STT. Need ${formatUnits(amount, STT_DECIMALS)} STT but only have ${formatUnits(sttBalance, STT_DECIMALS)} STT.`,
+    );
+  }
 
   const hash = await params.wallet.walletClient.writeContract({
     address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
@@ -326,9 +249,9 @@ export async function openMarket(params: {
     args: [
       directionToEnum(params.direction),
       BigInt(params.durationSeconds),
-      amount,
       { price: strikePrice, timestamp },
     ],
+    value: amount,
     account: params.wallet.address,
     chain,
   });
@@ -349,14 +272,19 @@ export async function joinMarket(params: {
   const amount = parseUnits(params.stake, STT_DECIMALS);
   const chain = buildSomniaChain();
 
-  await ensureWstt(params.wallet, amount);
-  await approveWstt(params.wallet, amount);
+  const sttBalance = await params.wallet.publicClient.getBalance({ address: params.wallet.address });
+  if (sttBalance < amount) {
+    throw new Error(
+      `Insufficient STT. Need ${formatUnits(amount, STT_DECIMALS)} STT but only have ${formatUnits(sttBalance, STT_DECIMALS)} STT.`,
+    );
+  }
 
   const hash = await params.wallet.walletClient.writeContract({
     address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
     abi: MARKET_ABI,
     functionName: 'joinMarket',
-    args: [BigInt(params.marketId), directionToEnum(params.direction), amount],
+    args: [BigInt(params.marketId), directionToEnum(params.direction)],
+    value: amount,
     account: params.wallet.address,
     chain,
   });
@@ -392,7 +320,6 @@ export async function claimMarket(params: {
 
 /**
  * Format a raw token amount (in wei, 18 decimals) to a human-readable string.
- * All staking amounts in BitDrum are WSTT (18 decimals).
  */
 export function formatTokenAmount(
   rawAmount: string | null | undefined,
@@ -424,7 +351,6 @@ export function formatTimeframe(durationSeconds: number | null | undefined) {
 
 /**
  * Format a raw Pyth oracle price (8 decimals, BTC/USD) to a JS number.
- * Note: oracle prices are still 8-decimal regardless of the staking token.
  */
 export function formatOraclePrice(rawAmount: string | null | undefined, decimals = 8) {
   const numeric = Number(rawAmount || '0');

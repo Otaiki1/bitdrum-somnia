@@ -12,7 +12,6 @@ import { createPublicClient, defineChain, http, type PublicClient } from 'viem';
 import {
   ACTIVE_SOMNIA_NETWORK,
   PREDICTION_MARKET_ADDRESS,
-  WSTT_ADDRESS,
 } from './somnia';
 
 const GET_MARKET_ABI = [
@@ -50,16 +49,6 @@ const GET_MARKET_ABI = [
         ],
       },
     ],
-    stateMutability: 'view',
-  },
-] as const;
-
-const ERC20_BALANCE_ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
   },
 ] as const;
@@ -207,20 +196,15 @@ export async function readMarketsOnchain(marketIds: string[]): Promise<OnchainMa
 }
 
 /**
- * Read the user's WSTT balance directly from the ERC-20 contract.
+ * Read the user's native STT balance.
  */
-export async function readWsttBalance(address: `0x${string}`): Promise<bigint> {
+export async function readSttBalance(address: `0x${string}`): Promise<bigint> {
   const client = getPublicClient();
-  return client.readContract({
-    address: WSTT_ADDRESS as `0x${string}`,
-    abi: ERC20_BALANCE_ABI,
-    functionName: 'balanceOf',
-    args: [address],
-  });
+  return client.getBalance({ address });
 }
 
 /**
- * Batch-read market state + user WSTT balance in one multicall.
+ * Read market state + user native STT balance in parallel.
  * Used by TradePanel to update pool sizes and balance before execution.
  */
 export async function readMarketAndBalance(
@@ -228,46 +212,34 @@ export async function readMarketAndBalance(
   userAddress: `0x${string}`,
 ): Promise<{ market: OnchainMarket; wbtcBalance: bigint }> {
   const client = getPublicClient();
-  const contractAddr = PREDICTION_MARKET_ADDRESS as `0x${string}`;
-  const wbtcAddr = WSTT_ADDRESS as `0x${string}`;
 
-  const [marketResult, balanceResult] = await client.multicall({
-    contracts: [
-      {
-        address: contractAddr,
-        abi: GET_MARKET_ABI,
-        functionName: 'getMarket' as const,
-        args: [BigInt(marketId)] as [bigint],
-      },
-      {
-        address: wbtcAddr,
-        abi: ERC20_BALANCE_ABI,
-        functionName: 'balanceOf' as const,
-        args: [userAddress] as [`0x${string}`],
-      },
-    ],
-    allowFailure: false,
-  });
-
-  const m = marketResult as any;
+  const [m, sttBalance] = await Promise.all([
+    client.readContract({
+      address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
+      abi: GET_MARKET_ABI,
+      functionName: 'getMarket',
+      args: [BigInt(marketId)],
+    }),
+    client.getBalance({ address: userAddress }),
+  ]);
 
   return {
     market: {
-      id: m.marketId.toString(),
-      state: STATE_MAP[m.state] ?? 'NONE',
-      direction: DIRECTION_MAP[m.openerDirection] ?? 'UP',
-      up_pool: m.upPool.toString(),
-      down_pool: m.downPool.toString(),
-      entry_price: m.strikePrice.toString(),
-      settlement_price: m.settlementPrice > 0n ? m.settlementPrice.toString() : null,
-      pom_profit_bps: Number(m.pomProfitBps),
-      outcome: OUTCOME_MAP[m.outcome] ?? null,
-      join_deadline: Number(m.joiningWindowEnd),
-      settlement_deadline: Number(m.expiryAt),
-      opened_at: Number(m.openedAt),
-      duration_seconds: Number(m.duration),
-      participant_count: Number(m.participantCount),
+      id: (m as any).marketId.toString(),
+      state: STATE_MAP[(m as any).state] ?? 'NONE',
+      direction: DIRECTION_MAP[(m as any).openerDirection] ?? 'UP',
+      up_pool: (m as any).upPool.toString(),
+      down_pool: (m as any).downPool.toString(),
+      entry_price: (m as any).strikePrice.toString(),
+      settlement_price: (m as any).settlementPrice > 0n ? (m as any).settlementPrice.toString() : null,
+      pom_profit_bps: Number((m as any).pomProfitBps),
+      outcome: OUTCOME_MAP[(m as any).outcome] ?? null,
+      join_deadline: Number((m as any).joiningWindowEnd),
+      settlement_deadline: Number((m as any).expiryAt),
+      opened_at: Number((m as any).openedAt),
+      duration_seconds: Number((m as any).duration),
+      participant_count: Number((m as any).participantCount),
     },
-    wbtcBalance: balanceResult as bigint,
+    wbtcBalance: sttBalance,
   };
 }

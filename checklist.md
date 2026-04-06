@@ -19,10 +19,9 @@ forge script script/Deploy.s.sol \
   --value 100ether          # deployer sends 100 STT to seed the vault
 ```
 
-- [ ] Run the deploy script — it will print all 7 addresses
+- [ ] Run the deploy script — it will print all 6 addresses
 - [ ] Record the addresses:
   ```
-  WSTT_ADDRESS=               # WrappedSTT — the staking token
   PREDICTION_MARKET_ADDRESS=
   SETTLEMENT_ENGINE_ADDRESS=
   SUBSCRIPTIONS_CONTRACT_ADDRESS=
@@ -31,7 +30,7 @@ forge script script/Deploy.s.sol \
   TREASURY_ADDRESS=
   ```
 - [ ] Confirm the vault is seeded: `LiquidityVault.availableLiquidity()` should return `100 * 10^18`
-- [ ] Users fund themselves from the Somnia faucet — **no minting needed**, they stake native STT which the frontend auto-wraps to WSTT before each trade
+- [ ] Users fund themselves from the Somnia faucet — they stake native STT directly, no wrapping or approval required
 
 ---
 
@@ -60,7 +59,6 @@ START_BLOCK=<deployment block number>
 POLL_INTERVAL_MS=3000
 BLOCK_BATCH_SIZE=500
 ```
-> Remove the legacy `DNA_TOKEN` line — Apibara is no longer used.
 
 **`backend/gateway/.env`**
 ```env
@@ -106,7 +104,6 @@ NEXT_PUBLIC_API_URL=http://localhost:3001/api
 NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
 NEXT_PUBLIC_CHAIN_ID=50312
 NEXT_PUBLIC_PREDICTION_MARKET_ADDR=<from Phase 1>
-NEXT_PUBLIC_WSTT_ADDR=<from Phase 1>      # WrappedSTT address
 NEXT_PUBLIC_PRIVY_APP_ID=<your privy app id>
 ```
 
