@@ -1,38 +1,17 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Activity, ArrowUpRight, Radio, Trophy, UserPlus } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { API_BASE, WS_URL } from '../utils/somnia';
+import { useQueryClient } from '@tanstack/react-query';
+import { API_BASE } from '../utils/somnia';
+import { useFeed, type FeedType } from '../hooks/useFeed';
+import { useLeaderboard } from '../hooks/useLeaderboard';
 import {
   formatTimeframe,
   formatTokenAmount,
   shortAddress,
   type MarketRecord,
 } from '../utils/bitdrum';
-
-type FeedItem = {
-  market_id: string;
-  participant_address: string;
-  action: 'OPENED' | 'JOINED';
-  direction: string;
-  stake_amount: string;
-  timestamp: string;
-  tier: string;
-  long_pool: string;
-  short_pool: string;
-  state: string;
-  pom_profit_bps: number;
-  duration_seconds: number;
-  join_deadline: number | null;
-  opened_at: string | null;
-  settlement_deadline: number | null;
-  signal: {
-    direction: string;
-    confidence: number;
-    rationale: string;
-  } | null;
-};
 
 function tierTone(tier: string) {
   if (tier === 'ORACLE') return 'border-amber-400/30 bg-amber-400/10 text-amber-200';
@@ -57,12 +36,9 @@ export const MarketFeed = ({
   onJoinMarket?: (market: MarketRecord) => void;
 }) => {
   const queryClient = useQueryClient();
-  const [feedType, setFeedType] = useState<'following' | 'oracle' | 'trending'>(
-    viewerAddress ? 'following' : 'oracle',
-  );
+  const [feedType, setFeedType] = useState<FeedType>(viewerAddress ? 'following' : 'oracle');
   const [followAddress, setFollowAddress] = useState('');
   const [followStatus, setFollowStatus] = useState<string | null>(null);
-  const [liveFeed, setLiveFeed] = useState<FeedItem[] | null>(null);
 
   useEffect(() => {
     if (!viewerAddress && feedType === 'following') {
@@ -70,58 +46,10 @@ export const MarketFeed = ({
     }
   }, [feedType, viewerAddress]);
 
-  const queryKey = useMemo(
-    () => ['feed', feedType, viewerAddress ?? 'anonymous'],
-    [feedType, viewerAddress],
-  );
-
-  const feedQuery = useQuery({
-    queryKey,
-    queryFn: async () => {
-      const params = new URLSearchParams({ type: feedType });
-      if (viewerAddress) {
-        params.set('address', viewerAddress);
-      }
-
-      const response = await fetch(`${API_BASE}/feed?${params.toString()}`);
-      if (!response.ok) {
-        throw new Error('Failed to load social feed');
-      }
-
-      return response.json();
-    },
-    refetchInterval: 300_000,
-  });
-
-  useEffect(() => {
-    const params = new URLSearchParams({
-      channel: 'feed',
-      type: feedType,
-    });
-    if (viewerAddress) {
-      params.set('address', viewerAddress);
-    }
-
-    const socket = new WebSocket(`${WS_URL}?${params.toString()}`);
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data?.payload?.feed) {
-        setLiveFeed(data.payload.feed);
-      }
-    };
-
-    socket.onerror = () => setLiveFeed(null);
-
-    return () => socket.close();
-  }, [feedType, viewerAddress]);
-
-  const feed: FeedItem[] = liveFeed ?? feedQuery.data?.feed ?? [];
+  const { feed, isLoading } = useFeed(feedType, viewerAddress);
 
   const handleFollow = async () => {
-    if (!viewerAddress || !followAddress) {
-      return;
-    }
-
+    if (!viewerAddress || !followAddress) return;
     setFollowStatus(null);
 
     const response = await fetch(`${API_BASE}/follow`, {
@@ -141,7 +69,7 @@ export const MarketFeed = ({
 
     setFollowAddress('');
     setFollowStatus('Following wallet');
-    queryClient.invalidateQueries({ queryKey });
+    queryClient.invalidateQueries({ queryKey: ['feed', feedType, viewerAddress] });
   };
 
   return (
@@ -204,7 +132,7 @@ export const MarketFeed = ({
       ) : null}
 
       <div className="flex min-h-[220px] flex-col gap-3">
-        {feedQuery.isLoading && !feed.length ? (
+        {isLoading && !feed.length ? (
           <div className="mt-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
             Reading protocol flow
           </div>
@@ -226,13 +154,11 @@ export const MarketFeed = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.24em] ${tierTone(
-                        item.tier,
-                      )}`}
+                      className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.24em] ${tierTone(item.tier)}`}
                     >
                       {item.tier}
                     </span>
-                    <span className="text-xs font-mono text-slate-300">
+                    <span className="font-mono text-xs text-slate-300">
                       {shortAddress(item.participant_address)}
                     </span>
                   </div>
@@ -241,9 +167,7 @@ export const MarketFeed = ({
                   </p>
                 </div>
                 <span
-                  className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] ${directionTone(
-                    item.direction,
-                  )}`}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.28em] ${directionTone(item.direction)}`}
                 >
                   {item.direction.toUpperCase() === 'UP' ? 'UP' : 'DOWN'}
                 </span>
@@ -313,36 +237,7 @@ export const MarketFeed = ({
 };
 
 export const LeaderboardCard = () => {
-  const [liveRankings, setLiveRankings] = useState<any[] | null>(null);
-
-  const leaderboardQuery = useQuery({
-    queryKey: ['leaderboard'],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE}/leaderboard`);
-      if (!response.ok) {
-        throw new Error('Failed to load leaderboard');
-      }
-
-      return response.json();
-    },
-    refetchInterval: 300_000,
-  });
-
-  useEffect(() => {
-    const socket = new WebSocket(`${WS_URL}?channel=leaderboard`);
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data?.payload?.rankings) {
-        setLiveRankings(data.payload.rankings);
-      }
-    };
-
-    socket.onerror = () => setLiveRankings(null);
-
-    return () => socket.close();
-  }, []);
-
-  const rankings = liveRankings ?? leaderboardQuery.data?.rankings ?? [];
+  const { rankings, isLoading } = useLeaderboard();
 
   return (
     <div className="glass-morphism mt-4">
@@ -357,7 +252,7 @@ export const LeaderboardCard = () => {
       </div>
 
       <div className="flex min-h-[180px] flex-col gap-3">
-        {leaderboardQuery.isLoading && !rankings.length ? (
+        {isLoading && !rankings.length ? (
           <div className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
             Computing tiers
           </div>
@@ -366,7 +261,7 @@ export const LeaderboardCard = () => {
             No ranked traders yet
           </div>
         ) : (
-          rankings.slice(0, 5).map((trader: any, index: number) => (
+          rankings.slice(0, 5).map((trader, index) => (
             <div
               key={trader.address}
               className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-3"
@@ -382,9 +277,7 @@ export const LeaderboardCard = () => {
               </div>
               <div className="text-right">
                 <span
-                  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.22em] ${tierTone(
-                    trader.tier,
-                  )}`}
+                  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.22em] ${tierTone(trader.tier)}`}
                 >
                   {trader.tier}
                 </span>

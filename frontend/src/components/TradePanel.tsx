@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ExternalLink,
@@ -14,7 +14,9 @@ import {
   Zap,
 } from 'lucide-react';
 import { useBitdrumWallet } from './BitdrumWalletProvider';
-import { API_BASE } from '../utils/somnia';
+import { useMarketDetail } from '../hooks/useMarketDetail';
+import { useSignal } from '../hooks/useSignal';
+import { usePom } from '../hooks/usePom';
 import {
   formatOraclePrice,
   formatTimeframe,
@@ -25,7 +27,6 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
-import { readMarketAndBalance } from '../utils/contracts';
 
 function signalTone(direction: string) {
   if (direction === 'UP') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
@@ -56,63 +57,32 @@ export const TradePanel = ({
   const mode = selectedMarket ? 'join' : 'open';
   const activeTimeframeSeconds = Number(selectedMarket?.duration_seconds || 300);
 
-  const marketDetailQuery = useQuery({
-    queryKey: ['market-detail-onchain', selectedMarket?.id, wallet?.address],
-    queryFn: async () => {
-      if (!selectedMarket?.id) return null;
-      if (wallet?.address) {
-        // Single multicall: market state + user WBTC balance
-        const { market, wbtcBalance } = await readMarketAndBalance(
-          selectedMarket.id,
-          wallet.address,
-        );
-        return { market, wbtcBalance };
-      }
-      // Fallback to gateway if wallet not connected
-      const response = await fetch(`${API_BASE}/markets/${selectedMarket.id}`);
-      if (!response.ok) throw new Error('Unable to load selected market');
-      const data = await response.json();
-      return { market: data.market, wbtcBalance: null };
-    },
-    enabled: Boolean(selectedMarket?.id),
-    refetchInterval: false, // WS invalidations drive refreshes; no background polling needed
-  });
+  // ── Data hooks ────────────────────────────────────────────────────────────
+  const { data: marketDetailData } = useMarketDetail(
+    selectedMarket?.id,
+    wallet?.address,
+  );
 
-  const signalQuery = useQuery({
-    queryKey: ['signal', selectedMarket?.id ?? 'preview', previewDirection, stake, activeTimeframeSeconds],
-    queryFn: async () => {
-      const url = selectedMarket?.id
-        ? `${API_BASE}/signal/${selectedMarket.id}`
-        : `${API_BASE}/signal/preview?direction=${previewDirection}&stake=${stake}`;
-      const response = await fetch(url);
-      // Treat non-ok as a soft failure — fall through to undefined data
-      if (!response.ok) return null;
-      return response.json();
-    },
-    refetchInterval: 120_000, // precomputed at market open; slow fallback refresh
-  });
+  const { data: signalData, isLoading: signalLoading } = useSignal(
+    selectedMarket?.id,
+    previewDirection,
+    stake,
+  );
 
-  const pomQuery = useQuery({
-    queryKey: ['pom', selectedMarket?.id ?? 'preview', previewDirection, stake, activeTimeframeSeconds],
-    queryFn: async () => {
-      const url = selectedMarket?.id
-        ? `${API_BASE}/pom/${selectedMarket.id}`
-        : `${API_BASE}/pom/preview?direction=${previewDirection}&stake=${stake}`;
-      const response = await fetch(url);
-      if (!response.ok) return null;
-      return response.json();
-    },
-    refetchInterval: 120_000, // mirrors signal interval; slow fallback
-  });
+  const { data: pomData } = usePom(
+    selectedMarket?.id,
+    previewDirection,
+    stake,
+  );
 
+  // ── Derived values ────────────────────────────────────────────────────────
   const activeMarket = selectedMarket?.id
-    ? { ...selectedMarket, ...marketDetailQuery.data?.market }
+    ? { ...selectedMarket, ...marketDetailData?.market }
     : null;
 
-  const wbtcBalance = marketDetailQuery.data?.wbtcBalance ?? null;
-
-  const signal = signalQuery.data?.signal;
-  const pom = pomQuery.data?.pom;
+  const wbtcBalance = marketDetailData?.wbtcBalance ?? null;
+  const signal = signalData?.signal;
+  const pom = pomData?.pom;
 
   const currentPomBps = useMemo(() => {
     if (pom?.pom_profit_bps) return Number(pom.pom_profit_bps);
@@ -126,6 +96,7 @@ export const TradePanel = ({
     return numericStake * (currentPomBps / 10_000);
   }, [currentPomBps, stake]);
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleConnect = async () => {
     setError(null);
     try {
@@ -199,7 +170,6 @@ export const TradePanel = ({
       setLastRecord(record);
       onTradeSubmitted?.(record);
 
-      // Fire-and-forget confirmation tracking
       if (txHash && tx?.wait) {
         tx.wait()
           .then(() => {
@@ -211,7 +181,7 @@ export const TradePanel = ({
               queryClient.invalidateQueries({ queryKey: ['feed'] }),
               queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
               queryClient.invalidateQueries({ queryKey: ['positions'] }),
-              queryClient.invalidateQueries({ queryKey: ['market-detail'] }),
+              queryClient.invalidateQueries({ queryKey: ['market-detail-onchain'] }),
             ]);
           })
           .catch(() => {
@@ -344,7 +314,7 @@ export const TradePanel = ({
         </div>
 
         <p className="text-sm leading-relaxed text-slate-300">
-          {signalQuery.isLoading
+          {signalLoading
             ? 'Synthesizing rationale from the latest protocol context.'
             : signal?.rationale || 'Waiting for the AI agent to return a rationale.'}
         </p>
@@ -372,7 +342,6 @@ export const TradePanel = ({
         </div>
       </div>
 
-      {/* Transaction Status Card */}
       {lastRecord ? (
         <div
           className={`rounded-2xl border p-3 text-xs transition-all ${
@@ -409,8 +378,8 @@ export const TradePanel = ({
                 href={lastRecord.explorerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
-            >
+                className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
+              >
                 Explorer
                 <ExternalLink className="h-2.5 w-2.5" />
               </a>

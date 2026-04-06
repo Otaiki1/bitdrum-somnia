@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bell, LogOut, Menu, Wallet, ExternalLink, TrendingUp, TrendingDown, Trophy, X } from 'lucide-react';
 import { PriceChart, type TradeMarker } from './PriceChart';
 import { TradePanel } from './TradePanel';
@@ -16,7 +16,8 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
-import { API_BASE, WS_URL, SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
+import { SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
+import { usePositions } from '../hooks/usePositions';
 
 // ─── Win / Lose Modal ───────────────────────────────────────────────────────
 
@@ -181,7 +182,6 @@ export const TradingDashboard = () => {
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
   const [claimingMarketId, setClaimingMarketId] = useState<string | null>(null);
   const [currentBtcPrice, setCurrentBtcPrice] = useState<number | null>(null);
-  const [livePositionsPayload, setLivePositionsPayload] = useState<any | null>(null);
 
   // Trade execution records for chart markers
   const [pendingTrades, setPendingTrades] = useState<TradeExecutionRecord[]>([]);
@@ -192,43 +192,7 @@ export const TradingDashboard = () => {
 
   const viewerAddress = address ?? '';
 
-  const positionsQuery = useQuery({
-    queryKey: ['positions', viewerAddress],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE}/positions/${viewerAddress}`);
-      if (!response.ok) throw new Error('Unable to load positions');
-      return response.json();
-    },
-    enabled: Boolean(viewerAddress),
-    refetchInterval: 300_000, // WS position stream is primary; this is a slow safety-net
-  });
-
-  useEffect(() => {
-    if (!viewerAddress) {
-      setLivePositionsPayload(null);
-      return;
-    }
-
-    const params = new URLSearchParams({
-      channel: 'positions',
-      address: viewerAddress,
-    });
-
-    const socket = new WebSocket(`${WS_URL}?${params.toString()}`);
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data?.payload?.positions) {
-        setLivePositionsPayload(data.payload);
-      }
-    };
-
-    socket.onerror = () => setLivePositionsPayload(null);
-
-    return () => socket.close();
-  }, [viewerAddress]);
-
-  const positionSummary = livePositionsPayload?.summary ?? positionsQuery.data?.summary;
-  const positions = livePositionsPayload?.positions ?? positionsQuery.data?.positions ?? [];
+  const { positions, summary: positionSummary, isLoading: positionsLoading } = usePositions(viewerAddress || null);
 
   // ── Show win/lose modal when a position resolves ───────────────────────────
   useEffect(() => {
@@ -551,7 +515,7 @@ export const TradingDashboard = () => {
             </div>
 
             <div className="flex flex-col gap-3">
-              {positionsQuery.isLoading && !positions.length ? (
+              {positionsLoading && !positions.length ? (
                 <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
                   Reading positions
                 </div>
