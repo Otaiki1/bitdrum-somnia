@@ -16,7 +16,7 @@ export PRIVATE_KEY=0x<deployer_private_key>
 forge script script/Deploy.s.sol \
   --rpc-url https://dream-rpc.somnia.network \
   --broadcast --verify \
-  --value 100ether          # deployer sends 100 STT to seed the vault
+  --value 10ether           # deployer sends 10 STT to seed the vault
 ```
 
 - [ ] Run the deploy script — it will print all 6 addresses
@@ -29,7 +29,7 @@ forge script script/Deploy.s.sol \
   LIQUIDITY_VAULT_ADDRESS=
   TREASURY_ADDRESS=
   ```
-- [ ] Confirm the vault is seeded: `LiquidityVault.availableLiquidity()` should return `100 * 10^18`
+- [ ] Confirm the vault is seeded: `LiquidityVault.availableLiquidity()` should return `10 * 10^18`
 - [ ] Users fund themselves from the Somnia faucet — they stake native STT directly, no wrapping or approval required
 
 ---
