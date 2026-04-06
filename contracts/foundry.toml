@@ -7,6 +7,10 @@ remappings = [
 ]
 solc_version = "0.8.20"
 evm_version = "paris"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+cbor_metadata = false
 
 [rpc_endpoints]
 shannon = "https://dream-rpc.somnia.network"
