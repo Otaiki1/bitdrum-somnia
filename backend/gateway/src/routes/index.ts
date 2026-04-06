@@ -3,6 +3,12 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { checkSubscription } from '../middleware/auth';
 import { pool } from '../db';
+import {
+  getAiSignalFromStreams,
+  getLatestLeaderboardSnapshotFromStreams,
+  publishAiSignalToStreams,
+  publishLeaderboardSnapshotToStreams,
+} from '../services/streams';
 
 dotenv.config();
 
@@ -122,6 +128,20 @@ async function getLatestSignal(marketId: string) {
   );
 
   return rows[0] || null;
+}
+
+function buildSignalResponseFromStreams(signal: any) {
+  return {
+    market_id: signal.market_id,
+    signal: {
+      direction: signal.direction,
+      confidence: signal.confidence,
+      rationale: signal.rationale,
+      generated_at: signal.generated_at,
+      is_accurate: null,
+    },
+    source: 'somnia-streams',
+  };
 }
 
 async function getSignalAccuracyLast30d() {
@@ -462,6 +482,15 @@ router.get('/signal/:market_id', checkSubscription, async (req, res) => {
       console.error('[Gateway] Signal cache fallback failed:', cacheError);
     }
 
+    try {
+      const streamedSignal = await getAiSignalFromStreams(market_id);
+      if (streamedSignal) {
+        return res.json(buildSignalResponseFromStreams(streamedSignal));
+      }
+    } catch (streamsError) {
+      console.error('[Gateway] Signal streams fallback failed:', streamsError);
+    }
+
     res.status(500).json({ error: 'AI Agent unavailable', details: error.message });
   }
 });
@@ -525,9 +554,51 @@ router.get('/leaderboard', async (_req, res) => {
       };
     });
 
-    res.json({ rankings, source: 'Postgres DB' });
+    const snapshotId = `global-${Date.now()}`;
+    const generatedAt = new Date().toISOString();
+    let streamsTxHash: string | null = null;
+
+    try {
+      streamsTxHash = await publishLeaderboardSnapshotToStreams({
+        snapshotId,
+        timeframe: 'global',
+        payloadJson: JSON.stringify(rankings),
+        generatedAt,
+      });
+    } catch (streamsError) {
+      console.error('[Gateway] Failed to publish leaderboard snapshot to Somnia Streams:', streamsError);
+    }
+
+    res.json({
+      rankings,
+      source: 'Postgres DB',
+      streams: streamsTxHash
+        ? {
+            snapshot_id: snapshotId,
+            tx_hash: streamsTxHash,
+            generated_at: generatedAt,
+          }
+        : null,
+    });
   } catch (error: any) {
     console.error('[Gateway] Leaderboard error:', error);
+    try {
+      const snapshot = await getLatestLeaderboardSnapshotFromStreams();
+      if (snapshot) {
+        return res.json({
+          rankings: snapshot.rankings,
+          source: 'somnia-streams',
+          streams: {
+            snapshot_id: snapshot.snapshot_id,
+            generated_at: snapshot.generated_at,
+            timeframe: snapshot.timeframe,
+          },
+        });
+      }
+    } catch (streamsError) {
+      console.error('[Gateway] Leaderboard streams fallback failed:', streamsError);
+    }
+
     res.status(500).json({ error: 'Database unavailable' });
   }
 });
@@ -875,10 +946,71 @@ router.post('/internal/ai-signals', async (req, res) => {
       [market_id, direction, confidence, rationale],
     );
 
-    res.status(201).json({ ok: true });
+    let streamsTxHash: string | null = null;
+    const generatedAt = new Date().toISOString();
+
+    try {
+      streamsTxHash = await publishAiSignalToStreams({
+        marketId: market_id,
+        direction,
+        confidence: Number(confidence),
+        rationale,
+        generatedAt,
+      });
+    } catch (streamsError) {
+      console.error('[Gateway] AI signal streams publish failed:', streamsError);
+    }
+
+    res.status(201).json({
+      ok: true,
+      streams: streamsTxHash
+        ? {
+            tx_hash: streamsTxHash,
+            generated_at: generatedAt,
+          }
+        : null,
+    });
   } catch (error: any) {
     console.error('[Gateway] AI signal persistence error:', error.message);
     res.status(500).json({ error: 'Failed to persist AI signal' });
+  }
+});
+
+router.get('/streams/ai-signals/:market_id', async (req, res) => {
+  try {
+    const signal = await getAiSignalFromStreams(req.params.market_id);
+
+    if (!signal) {
+      return res.status(404).json({ error: 'No streamed AI signal found' });
+    }
+
+    res.json(buildSignalResponseFromStreams(signal));
+  } catch (error: any) {
+    console.error('[Gateway] Streams AI signal read error:', error.message);
+    res.status(500).json({ error: 'Failed to read streamed AI signal' });
+  }
+});
+
+router.get('/streams/leaderboard/latest', async (_req, res) => {
+  try {
+    const snapshot = await getLatestLeaderboardSnapshotFromStreams();
+
+    if (!snapshot) {
+      return res.status(404).json({ error: 'No streamed leaderboard snapshot found' });
+    }
+
+    res.json({
+      rankings: snapshot.rankings,
+      source: 'somnia-streams',
+      streams: {
+        snapshot_id: snapshot.snapshot_id,
+        generated_at: snapshot.generated_at,
+        timeframe: snapshot.timeframe,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Gateway] Streams leaderboard read error:', error.message);
+    res.status(500).json({ error: 'Failed to read streamed leaderboard snapshot' });
   }
 });
 

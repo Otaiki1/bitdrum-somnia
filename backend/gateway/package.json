@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@somnia-chain/reactivity": "^0.1.10",
+    "@somnia-chain/streams": "^0.12.2",
     "axios": "^1.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
