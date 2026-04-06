@@ -14,6 +14,13 @@ const PORT = Number(process.env.PORT || 3001);
 const WS_REFRESH_MS = Number(process.env.WS_REFRESH_MS || 60000);
 const WS_USE_POLLING_FALLBACK = process.env.WS_USE_POLLING_FALLBACK !== 'false';
 
+// Per-channel in-memory cache: avoids redundant DB round-trips when
+// multiple invalidations fire in quick succession and avoids pushing
+// unchanged payloads to WebSocket clients.
+const CHANNEL_CACHE_TTL_MS = 2000; // minimum ms between re-fetches for the same channel
+type ChannelCacheEntry = { payloadStr: string; fetchedAt: number };
+const channelCache = new Map<string, ChannelCacheEntry>();
+
 app.use(cors());
 app.use(express.json());
 app.use('/api', router);
@@ -59,6 +66,7 @@ function resolveFeedPath(searchParams: URLSearchParams) {
 wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
   const requestUrl = new URL(request.url || '/ws', `http://${request.headers.host}`);
   const feedPath = resolveFeedPath(requestUrl.searchParams);
+  const channelKey = requestUrl.search; // unique key per channel+params combination
 
   if (!feedPath) {
     socket.send(JSON.stringify({ error: 'Missing required websocket query params' }));
@@ -66,16 +74,30 @@ wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
     return;
   }
 
-  const publish = async () => {
+  const publish = async (force = false) => {
     try {
-      const response = await fetch(`http://127.0.0.1:${PORT}${feedPath}`);
-      const payload = await response.json();
+      const now = Date.now();
+      const cached = channelCache.get(channelKey);
 
+      let payloadStr: string;
+
+      if (!force && cached && now - cached.fetchedAt < CHANNEL_CACHE_TTL_MS) {
+        // Re-use cached payload — no DB/REST round-trip needed yet
+        payloadStr = cached.payloadStr;
+      } else {
+        const response = await fetch(`http://127.0.0.1:${PORT}${feedPath}`);
+        const payload = await response.json();
+        payloadStr = JSON.stringify(payload);
+        channelCache.set(channelKey, { payloadStr, fetchedAt: now });
+      }
+
+      // Only push to the socket if the payload has actually changed since last
+      // time this socket received data, or if this is the initial publish.
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(
           JSON.stringify({
             channel: requestUrl.searchParams.get('channel') || 'markets',
-            payload,
+            payload: JSON.parse(payloadStr),
           }),
         );
       }
@@ -90,7 +112,7 @@ wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
     }
   };
 
-  void publish();
+  void publish(true); // force fresh data on initial connection
   const unsubscribe = subscribeToInvalidations(() => {
     void publish();
   });
