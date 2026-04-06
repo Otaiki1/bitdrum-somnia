@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {TraderRecord} from "./Types.sol";
 import {ILeaderboardRegistry} from "./interfaces/ILeaderboardRegistry.sol";
+import {Owned} from "./Owned.sol";
 
-contract LeaderboardRegistry is Ownable, ILeaderboardRegistry {
+contract LeaderboardRegistry is Owned, ILeaderboardRegistry {
     mapping(address => TraderRecord) public records;
     address public settlementEngine;
 
@@ -15,7 +15,7 @@ contract LeaderboardRegistry is Ownable, ILeaderboardRegistry {
 
     error Unauthorized();
 
-    constructor(address owner_) Ownable(owner_) {}
+    constructor(address owner_) Owned(owner_) {}
 
     modifier onlySettlementEngine() {
         if (msg.sender != settlementEngine) {

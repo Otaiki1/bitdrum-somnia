@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {
     Direction,
     Market,
@@ -12,8 +11,9 @@ import {
 } from "./Types.sol";
 import {ILeaderboardRegistry} from "./interfaces/ILeaderboardRegistry.sol";
 import {IPredictionMarket} from "./interfaces/IPredictionMarket.sol";
+import {Owned} from "./Owned.sol";
 
-contract SettlementEngine is Ownable {
+contract SettlementEngine is Owned {
     // DIA oracle updates every 120s on Somnia; 150s gives a comfortable buffer.
     uint256 public constant ORACLE_MAX_AGE = 150;
 
@@ -27,7 +27,7 @@ contract SettlementEngine is Ownable {
     error OraclePriceStale();
     error InvalidOraclePrice();
 
-    constructor(address predictionMarket_, address leaderboardRegistry_, address owner_) Ownable(owner_) {
+    constructor(address predictionMarket_, address leaderboardRegistry_, address owner_) Owned(owner_) {
         require(predictionMarket_ != address(0) && leaderboardRegistry_ != address(0), "zero address");
         predictionMarket = IPredictionMarket(predictionMarket_);
         leaderboardRegistry = ILeaderboardRegistry(leaderboardRegistry_);

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Subscription, Tier} from "./Types.sol";
+import {Owned} from "./Owned.sol";
 
-contract SubscriptionsContract is Ownable {
+contract SubscriptionsContract is Owned {
     /// @dev Subscription fees in native STT (18 decimals)
     uint256 public constant PRO_FEE = 10 ether;    // 10 STT
     uint256 public constant ELITE_FEE = 25 ether;  // 25 STT
@@ -18,7 +18,7 @@ contract SubscriptionsContract is Ownable {
 
     error TransferFailed();
 
-    constructor(address signalRevenuePool_, address owner_) Ownable(owner_) {
+    constructor(address signalRevenuePool_, address owner_) Owned(owner_) {
         require(signalRevenuePool_ != address(0), "zero address");
         signalRevenuePool = signalRevenuePool_;
     }

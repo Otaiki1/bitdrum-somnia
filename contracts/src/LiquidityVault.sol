@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Direction} from "./Types.sol";
 import {ILiquidityVault} from "./interfaces/ILiquidityVault.sol";
+import {Owned} from "./Owned.sol";
 
-contract LiquidityVault is Ownable, ILiquidityVault {
+contract LiquidityVault is Owned, ILiquidityVault {
     address public predictionMarket;
 
     mapping(uint256 => uint256) public committedByMarket;
@@ -17,7 +17,7 @@ contract LiquidityVault is Ownable, ILiquidityVault {
     error Unauthorized();
     error TransferFailed();
 
-    constructor(address owner_) Ownable(owner_) {}
+    constructor(address owner_) Owned(owner_) {}
 
     receive() external payable {}
 
@@ -34,7 +34,11 @@ contract LiquidityVault is Ownable, ILiquidityVault {
         emit PredictionMarketUpdated(predictionMarket_);
     }
 
-    function deposit() external payable onlyOwner {}
+    function deposit() external payable {
+        if (msg.sender != owner()) {
+            revert Unauthorized();
+        }
+    }
 
     function fundMarket(uint256 marketId, Direction direction, uint256 amount, address recipient)
         external

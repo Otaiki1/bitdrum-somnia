@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {
     Direction,
     Market,
@@ -11,8 +10,9 @@ import {
     StakeRecord
 } from "./Types.sol";
 import {ILiquidityVault} from "./interfaces/ILiquidityVault.sol";
+import {Owned} from "./Owned.sol";
 
-contract PredictionMarket is Ownable {
+contract PredictionMarket is Owned {
     uint256 public constant MIN_POM_BPS = 500;
     uint256 public constant MAX_POM_BPS = 7000;
     uint256 public constant PROTOCOL_FEE_BPS = 200;
@@ -74,7 +74,7 @@ contract PredictionMarket is Ownable {
     error Unauthorized();
     error TransferFailed();
 
-    constructor(address vault_, address treasury_, address owner_) Ownable(owner_) {
+    constructor(address vault_, address treasury_, address owner_) Owned(owner_) {
         require(vault_ != address(0) && treasury_ != address(0), "zero address");
         vault = vault_;
         treasury = treasury_;

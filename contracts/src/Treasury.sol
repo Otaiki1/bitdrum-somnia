@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Owned} from "./Owned.sol";
 
-contract Treasury is Ownable {
+contract Treasury is Owned {
     uint256 public constant VAULT_BPS = 4000;
     uint256 public constant AI_BPS = 3500;
     uint256 public constant RESERVE_BPS = 2500;
@@ -22,7 +22,7 @@ contract Treasury is Ownable {
         address aiFundRecipient_,
         address reserveRecipient_,
         address owner_
-    ) Ownable(owner_) {
+    ) Owned(owner_) {
         require(
             vaultRecipient_ != address(0)
                 && aiFundRecipient_ != address(0)
