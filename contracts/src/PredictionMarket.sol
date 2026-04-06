@@ -1,0 +1,349 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {
+    Direction,
+    Market,
+    MarketState,
+    OracleData,
+    Outcome,
+    StakeRecord
+} from "./Types.sol";
+import {ILiquidityVault} from "./interfaces/ILiquidityVault.sol";
+
+contract PredictionMarket is Ownable {
+    using SafeERC20 for IERC20;
+
+    uint256 public constant MIN_POM_BPS = 500;
+    uint256 public constant MAX_POM_BPS = 7000;
+    uint256 public constant PROTOCOL_FEE_BPS = 200;
+    uint256 public constant ORACLE_MAX_AGE = 30;
+
+    IERC20 public immutable wbtc;
+    address public immutable vault;
+    address public immutable treasury;
+
+    uint256 public nextMarketId;
+    address public settlementEngine;
+
+    mapping(uint256 => Market) private _markets;
+    mapping(uint256 => mapping(address => StakeRecord)) private _stakes;
+    mapping(uint256 => mapping(address => bool)) private _hasJoined;
+    mapping(uint256 => address[]) private _participants;
+
+    event SettlementEngineUpdated(address indexed settlementEngine);
+    event MarketOpened(
+        uint256 indexed marketId,
+        address indexed opener,
+        Direction direction,
+        uint256 stakeAmount,
+        uint256 duration,
+        uint128 strikePrice
+    );
+    event MarketJoined(uint256 indexed marketId, address indexed participant, Direction direction, uint256 stakeAmount);
+    event MarketPomUpdated(uint256 indexed marketId, uint256 pomProfitBps);
+    event MarketLocked(uint256 indexed marketId);
+    event MarketSettled(
+        uint256 indexed marketId,
+        Outcome outcome,
+        uint128 settlementPrice,
+        uint256 feeAmount,
+        uint256 sweptToVault
+    );
+    event MarketClaimed(
+        uint256 indexed marketId,
+        address indexed participant,
+        Outcome outcome,
+        uint256 payout,
+        uint256 profit
+    );
+
+    error InvalidDuration();
+    error InvalidStake();
+    error InvalidPom();
+    error MarketNotOpen();
+    error MarketNotLocked();
+    error MarketNotClaimable();
+    error JoiningWindowActive();
+    error JoiningWindowClosed();
+    error MarketNotExpired();
+    error StakeMissing();
+    error AlreadyClaimed();
+    error AlreadyJoined();
+    error OraclePriceStale();
+    error InvalidOraclePrice();
+    error Unauthorized();
+
+    constructor(address wbtc_, address vault_, address treasury_, address owner_) Ownable(owner_) {
+        require(wbtc_ != address(0) && vault_ != address(0) && treasury_ != address(0), "zero address");
+        wbtc = IERC20(wbtc_);
+        vault = vault_;
+        treasury = treasury_;
+    }
+
+    modifier onlySettlementEngine() {
+        if (msg.sender != settlementEngine) {
+            revert Unauthorized();
+        }
+        _;
+    }
+
+    function setSettlementEngine(address settlementEngine_) external onlyOwner {
+        require(settlementEngine_ != address(0), "zero settlement engine");
+        settlementEngine = settlementEngine_;
+        emit SettlementEngineUpdated(settlementEngine_);
+    }
+
+    function openMarket(
+        Direction direction,
+        uint256 duration,
+        uint256 stakeAmount,
+        OracleData calldata strikeData
+    ) external returns (uint256 marketId) {
+        if (!_isSupportedDuration(duration)) {
+            revert InvalidDuration();
+        }
+        if (stakeAmount == 0) {
+            revert InvalidStake();
+        }
+
+        _assertFreshOracle(strikeData);
+
+        marketId = ++nextMarketId;
+        uint256 joiningWindowEnd = block.timestamp + _joiningWindowFor(duration);
+
+        Market storage market = _markets[marketId];
+        market.marketId = marketId;
+        market.opener = msg.sender;
+        market.openerDirection = direction;
+        market.duration = duration;
+        market.openedAt = block.timestamp;
+        market.joiningWindowEnd = joiningWindowEnd;
+        market.expiryAt = block.timestamp + duration;
+        market.strikePrice = strikeData.price;
+        market.strikeTimestamp = strikeData.timestamp;
+        market.pomProfitBps = MIN_POM_BPS;
+        market.state = MarketState.OPEN;
+        market.outcome = Outcome.PENDING;
+
+        _recordStake(marketId, msg.sender, direction, stakeAmount);
+
+        emit MarketOpened(marketId, msg.sender, direction, stakeAmount, duration, strikeData.price);
+    }
+
+    function joinMarket(uint256 marketId, Direction direction, uint256 stakeAmount) external {
+        Market storage market = _markets[marketId];
+
+        if (market.state != MarketState.OPEN) {
+            revert MarketNotOpen();
+        }
+        if (block.timestamp > market.joiningWindowEnd) {
+            revert JoiningWindowClosed();
+        }
+        if (stakeAmount == 0) {
+            revert InvalidStake();
+        }
+
+        _recordStake(marketId, msg.sender, direction, stakeAmount);
+
+        emit MarketJoined(marketId, msg.sender, direction, stakeAmount);
+    }
+
+    function setPomProfitBps(uint256 marketId, uint256 pomProfitBps) external {
+        if (msg.sender != owner() && msg.sender != settlementEngine) {
+            revert Unauthorized();
+        }
+        if (pomProfitBps < MIN_POM_BPS || pomProfitBps > MAX_POM_BPS) {
+            revert InvalidPom();
+        }
+
+        Market storage market = _markets[marketId];
+        if (market.state != MarketState.OPEN) {
+            revert MarketNotOpen();
+        }
+
+        market.pomProfitBps = pomProfitBps;
+
+        emit MarketPomUpdated(marketId, pomProfitBps);
+    }
+
+    function lockMarket(uint256 marketId) external {
+        Market storage market = _markets[marketId];
+
+        if (market.state != MarketState.OPEN) {
+            revert MarketNotOpen();
+        }
+        if (block.timestamp < market.joiningWindowEnd) {
+            revert JoiningWindowActive();
+        }
+
+        market.state = MarketState.LOCKED;
+
+        emit MarketLocked(marketId);
+    }
+
+    function finalizeSettlement(uint256 marketId, Outcome outcome, OracleData calldata settlementData)
+        external
+        onlySettlementEngine
+    {
+        Market storage market = _markets[marketId];
+
+        if (market.state != MarketState.LOCKED) {
+            revert MarketNotLocked();
+        }
+        if (block.timestamp < market.expiryAt) {
+            revert MarketNotExpired();
+        }
+
+        _assertFreshOracle(settlementData);
+
+        market.outcome = outcome;
+        market.settlementPrice = settlementData.price;
+        market.settlementTimestamp = settlementData.timestamp;
+        market.state = MarketState.CLAIMABLE;
+
+        if (outcome == Outcome.DRAW) {
+            if (market.vaultCommitted > 0) {
+                wbtc.safeTransfer(vault, market.vaultCommitted);
+            }
+        } else {
+            uint256 totalPool = market.upPool + market.downPool;
+            uint256 feeAmount = (totalPool * PROTOCOL_FEE_BPS) / 10_000;
+            uint256 sweptToVault = totalPool - feeAmount;
+
+            market.feeAmount = feeAmount;
+            market.sweptToVault = sweptToVault;
+
+            if (feeAmount > 0) {
+                wbtc.safeTransfer(treasury, feeAmount);
+            }
+            if (sweptToVault > 0) {
+                wbtc.safeTransfer(vault, sweptToVault);
+            }
+        }
+
+        emit MarketSettled(
+            marketId,
+            outcome,
+            settlementData.price,
+            market.feeAmount,
+            market.sweptToVault
+        );
+    }
+
+    function claimPayout(uint256 marketId) external {
+        Market storage market = _markets[marketId];
+
+        if (market.state != MarketState.CLAIMABLE) {
+            revert MarketNotClaimable();
+        }
+
+        StakeRecord storage stake = _stakes[marketId][msg.sender];
+
+        if (!stake.exists) {
+            revert StakeMissing();
+        }
+        if (stake.claimed) {
+            revert AlreadyClaimed();
+        }
+
+        stake.claimed = true;
+        market.claimedCount += 1;
+
+        uint256 payout;
+        uint256 profit;
+
+        if (market.outcome == Outcome.DRAW) {
+            payout = stake.amount;
+            wbtc.safeTransfer(msg.sender, payout);
+        } else if (_isWinningStake(stake.direction, market.outcome)) {
+            profit = (stake.amount * market.pomProfitBps) / 10_000;
+            payout = stake.amount + profit;
+            ILiquidityVault(vault).payWinner(msg.sender, stake.amount, profit);
+        }
+
+        if (market.claimedCount == market.participantCount) {
+            market.state = MarketState.CLOSED;
+        }
+
+        emit MarketClaimed(marketId, msg.sender, market.outcome, payout, profit);
+    }
+
+    function getMarket(uint256 marketId) external view returns (Market memory) {
+        return _markets[marketId];
+    }
+
+    function getMarketParticipants(uint256 marketId) external view returns (address[] memory) {
+        return _participants[marketId];
+    }
+
+    function getStakeRecord(uint256 marketId, address participant) external view returns (StakeRecord memory) {
+        return _stakes[marketId][participant];
+    }
+
+    function _recordStake(uint256 marketId, address participant, Direction direction, uint256 stakeAmount) internal {
+        if (_hasJoined[marketId][participant]) {
+            revert AlreadyJoined();
+        }
+
+        _hasJoined[marketId][participant] = true;
+        _participants[marketId].push(participant);
+
+        wbtc.safeTransferFrom(participant, address(this), stakeAmount);
+
+        Direction vaultDirection = _opposite(direction);
+        ILiquidityVault(vault).fundMarket(marketId, vaultDirection, stakeAmount, address(this));
+
+        StakeRecord storage stake = _stakes[marketId][participant];
+        stake.direction = direction;
+        stake.amount = stakeAmount;
+        stake.claimed = false;
+        stake.exists = true;
+
+        Market storage market = _markets[marketId];
+        market.totalUserStaked += stakeAmount;
+        market.vaultCommitted += stakeAmount;
+        market.participantCount += 1;
+
+        if (direction == Direction.UP) {
+            market.upPool += stakeAmount;
+            market.downPool += stakeAmount;
+        } else {
+            market.downPool += stakeAmount;
+            market.upPool += stakeAmount;
+        }
+    }
+
+    function _assertFreshOracle(OracleData calldata oracleData) internal view {
+        if (oracleData.price == 0) {
+            revert InvalidOraclePrice();
+        }
+        if (oracleData.timestamp > block.timestamp) {
+            revert OraclePriceStale();
+        }
+        if (block.timestamp - oracleData.timestamp > ORACLE_MAX_AGE) {
+            revert OraclePriceStale();
+        }
+    }
+
+    function _isSupportedDuration(uint256 duration) internal pure returns (bool) {
+        return duration == 30 || duration == 60 || duration == 300;
+    }
+
+    function _joiningWindowFor(uint256 duration) internal pure returns (uint256) {
+        uint256 window = duration / 3;
+        return window < 10 ? 10 : window;
+    }
+
+    function _opposite(Direction direction) internal pure returns (Direction) {
+        return direction == Direction.UP ? Direction.DOWN : Direction.UP;
+    }
+
+    function _isWinningStake(Direction direction, Outcome outcome) internal pure returns (bool) {
+        return (direction == Direction.UP && outcome == Outcome.UP)
+            || (direction == Direction.DOWN && outcome == Outcome.DOWN);
+    }
+}
