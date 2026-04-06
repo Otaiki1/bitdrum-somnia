@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { publishInvalidation } from './realtime';
+import { precomputeSignalForMarket } from './precompute';
 
 dotenv.config();
 
@@ -147,6 +148,14 @@ export async function startSomniaReactivityBridge() {
               traderAddress: traderAddress ? String(traderAddress) : null,
               occurredAt: new Date().toISOString(),
             });
+
+            // Precompute AI signal at market open and at lock so the
+            // user-facing /signal/:id endpoint reads from cache instantly.
+            if (marketId && (eventName === 'MarketOpened' || eventName === 'MarketLocked')) {
+              precomputeSignalForMarket(marketId).catch(() => {
+                // fire-and-forget; errors logged inside precomputeSignalForMarket
+              });
+            }
           } catch (error) {
             console.error(`[Gateway] Failed to decode Reactivity payload for ${eventName}:`, error);
           }
