@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 import {LeaderboardRegistry} from "../src/LeaderboardRegistry.sol";
 import {LiquidityVault} from "../src/LiquidityVault.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
@@ -30,5 +30,15 @@ contract DeployScript is Script {
         leaderboard.setSettlementEngine(address(settlementEngine));
 
         vm.stopBroadcast();
+
+        console.log("=== BitDrum Deployment Addresses ===");
+        console.log("WBTC (MockERC20):          ", address(wbtc));
+        console.log("LiquidityVault:            ", address(vault));
+        console.log("Treasury:                  ", address(treasury));
+        console.log("LeaderboardRegistry:       ", address(leaderboard));
+        console.log("PredictionMarket:          ", address(market));
+        console.log("SettlementEngine:          ", address(settlementEngine));
+        console.log("SubscriptionsContract:     ", address(subscriptions));
+        console.log("=====================================");
     }
 }

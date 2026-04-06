@@ -171,6 +171,7 @@ async function upsertMarket(client: PoolClient, market: MarketView, txHash?: str
         long_pool,
         short_pool,
         join_deadline,
+        duration_seconds,
         state,
         entry_price,
         settlement_price,
@@ -179,7 +180,7 @@ async function upsertMarket(client: PoolClient, market: MarketView, txHash?: str
         opened_at,
         settled_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (market_id) DO UPDATE SET
         opener_address = EXCLUDED.opener_address,
         opener_direction = EXCLUDED.opener_direction,
@@ -188,6 +189,7 @@ async function upsertMarket(client: PoolClient, market: MarketView, txHash?: str
         long_pool = EXCLUDED.long_pool,
         short_pool = EXCLUDED.short_pool,
         join_deadline = EXCLUDED.join_deadline,
+        duration_seconds = EXCLUDED.duration_seconds,
         state = EXCLUDED.state,
         entry_price = EXCLUDED.entry_price,
         settlement_price = EXCLUDED.settlement_price,
@@ -205,6 +207,7 @@ async function upsertMarket(client: PoolClient, market: MarketView, txHash?: str
       market.upPool.toString(),
       market.downPool.toString(),
       Number(market.joiningWindowEnd),
+      Number(market.duration),
       normalizeState(market.state),
       market.strikePrice.toString(),
       market.settlementPrice > 0n ? market.settlementPrice.toString() : null,

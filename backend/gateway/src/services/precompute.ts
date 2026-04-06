@@ -40,16 +40,12 @@ export async function precomputeSignalForMarket(marketId: string): Promise<void>
       return;
     }
 
-    // Upsert into DB cache
+    // Insert a new signal row (ai_signals allows multiple per market;
+    // getLatestSignal reads ORDER BY generated_at DESC LIMIT 1).
     await pool.query(
       `
         INSERT INTO ai_signals (market_id, direction, confidence, rationale, generated_at)
         VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (market_id) DO UPDATE SET
-          direction    = EXCLUDED.direction,
-          confidence   = EXCLUDED.confidence,
-          rationale    = EXCLUDED.rationale,
-          generated_at = EXCLUDED.generated_at
       `,
       [marketId, data.direction, Number(data.confidence), data.rationale],
     );
