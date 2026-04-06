@@ -2,7 +2,7 @@
 
 ## Phase 0 — Prerequisites
 - [ ] Fund a deployer wallet with STT on Somnia Shannon testnet (faucet at `faucet.somnia.network`)
-- [ ] Have an OpenAI API key ready (existing one in `ai-agent/.env` is exposed — rotate it)
+- [ ] Have an OpenAI API key ready
 - [ ] Have a Privy app configured for Somnia (existing app ID is fine for testnet)
 - [ ] PostgreSQL instance running (`createdb bitdrum` if local)
 
@@ -88,17 +88,17 @@ SETTLEMENT_ENGINE_ADDRESS=<from Phase 1>
 KEEPER_PRIVATE_KEY=<keeper wallet private key>
 KEEPER_POM_BPS=1000
 POLLING_INTERVAL=3000
-# Keeper reads BTC/USD directly from the DIA on-chain oracle (no API key needed).
+ORACLE_MAX_AGE_SECONDS=150
+# Keeper reads BTC/USD from the DIA on-chain oracle (no API key needed).
 # Set ORACLE_STATIC_PRICE only as a fallback if the RPC is unavailable.
 # ORACLE_STATIC_PRICE=10500000000000    # e.g. $105,000 as 8-decimal integer
 ```
 
 **`backend/ai-agent/.env`**
 ```env
-OPENAI_API_KEY=<rotated key>
+OPENAI_API_KEY=<your key>
 GATEWAY_URL=http://localhost:3001/api
 ```
-> Remove `STARKNET_RPC_URL` and `MARKET_CONTRACT_ADDRESS` — the AI agent reads context via the gateway, not directly from the chain.
 
 **`frontend/.env.local`**
 ```env
@@ -111,9 +111,9 @@ NEXT_PUBLIC_PRIVY_APP_ID=<your privy app id>
 
 ---
 
-## Phase 4 — Frontend Hook Verification
+## Phase 4 — Frontend Verification
 
-The frontend data layer is now hook-based. All data fetching lives in
+The frontend data layer is hook-based. All data fetching lives in
 `frontend/src/hooks/` — components never call `fetch()` directly.
 
 | Hook | Source | Used by |
@@ -126,7 +126,7 @@ The frontend data layer is now hook-based. All data fetching lives in
 | `useSignal(marketId?, direction?, stake?)` | Gateway REST (precomputed) | `TradePanel` |
 | `usePom(marketId?, direction?, stake?)` | Gateway REST | `TradePanel` |
 
-- [ ] Run `cd frontend && npm install` to pull in the `viem` file-dependency
+- [ ] Run `cd frontend && npm install`
 - [ ] Start the frontend (`npm run dev`) and confirm no TypeScript errors in the hooks
 - [ ] Open browser devtools → Network tab: confirm no raw `fetch` calls from components
 - [ ] Open devtools → WS tab: verify a WebSocket connection opens for each active channel (positions, feed, leaderboard)
@@ -149,7 +149,7 @@ cd backend/gateway && npm run build && npm start
 # 4. Keeper (automates lock + settle)
 cd backend/keeper && npm run build && npm start
 
-# 5. Frontend (install first to pick up viem file-dependency)
+# 5. Frontend
 cd frontend && npm install && npm run dev
 ```
 
@@ -164,12 +164,12 @@ cd frontend && npm install && npm run dev
 
 ## Phase 6 — Smoke Test
 
-- [ ] Open frontend, connect wallet (MetaMask on Somnia Shannon)
-- [ ] Approve WBTC spend & open a market (UP or DOWN, 30s timeframe)
-- [ ] Second wallet joins the same market
-- [ ] Keeper auto-locks after join window expires
-- [ ] Keeper auto-settles after expiry
-- [ ] Winning wallet can see "Claim" button and claims payout
+- [ ] Open frontend, connect wallet (MetaMask on Somnia Shannon, chain ID 50312)
+- [ ] Open a market — pick UP or DOWN, 30s timeframe, send 1 STT (single transaction, no approval needed)
+- [ ] Second wallet joins the same market on the opposite side
+- [ ] Keeper auto-locks after join window expires (~10s for a 30s market)
+- [ ] Keeper auto-settles after 30s expiry using DIA BTC/USD price
+- [ ] Winning wallet sees "Claim" button and claims payout (principal + POM profit)
 - [ ] Leaderboard shows both traders ranked
 - [ ] AI signal appears on the trade panel before settlement
 - [ ] WS push updates (no manual refresh needed) after each market state change
@@ -180,8 +180,8 @@ cd frontend && npm install && npm run dev
 
 | Gap | Impact | Fix |
 |-----|--------|-----|
-| DIA oracle staleness on testnet | DIA updates every 120s; keeper `ORACLE_MAX_AGE=30` may reject if chain is behind | Increase `ORACLE_MAX_AGE` or use static fallback during testing |
-| `next.config.ts` transpiles `pyth-starknet-js` | Dead dependency, wastes build time | Remove from `transpilePackages` |
+| Keeper `settlement.ts` uses ethers.js | Inconsistency with rest of stack (viem) | Migrate when touching keeper next |
 | No `.env.example` files committed | Onboarding friction | Add after first successful deploy |
-| Keeper still uses ethers (not viem) | Inconsistency, not a bug | Migrate when touching keeper next |
 | No docker-compose | Manual startup order required | Add when moving to hosted infra |
+| No contract test suite | Regressions undetected | Add Forge tests before mainnet |
+| Reactivity subscription uses `topic1` context — DIA oracle staleness concern resolved | `ORACLE_MAX_AGE` raised to 150s to cover DIA's 120s update interval | — |

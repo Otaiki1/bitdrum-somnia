@@ -16,7 +16,8 @@ contract PredictionMarket is Ownable {
     uint256 public constant MIN_POM_BPS = 500;
     uint256 public constant MAX_POM_BPS = 7000;
     uint256 public constant PROTOCOL_FEE_BPS = 200;
-    uint256 public constant ORACLE_MAX_AGE = 30;
+    // DIA oracle updates every 120s on Somnia; 150s gives a comfortable buffer.
+    uint256 public constant ORACLE_MAX_AGE = 150;
 
     address public immutable vault;
     address public immutable treasury;

@@ -14,7 +14,8 @@ import {ILeaderboardRegistry} from "./interfaces/ILeaderboardRegistry.sol";
 import {IPredictionMarket} from "./interfaces/IPredictionMarket.sol";
 
 contract SettlementEngine is Ownable {
-    uint256 public constant ORACLE_MAX_AGE = 30;
+    // DIA oracle updates every 120s on Somnia; 150s gives a comfortable buffer.
+    uint256 public constant ORACLE_MAX_AGE = 150;
 
     IPredictionMarket public immutable predictionMarket;
     ILeaderboardRegistry public immutable leaderboardRegistry;
