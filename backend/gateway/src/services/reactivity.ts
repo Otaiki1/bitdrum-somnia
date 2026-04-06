@@ -8,7 +8,7 @@ const PREDICTION_MARKET_ADDRESS = process.env.PREDICTION_MARKET_ADDRESS || '';
 const SOMNIA_CHAIN_ID = Number(process.env.SOMNIA_CHAIN_ID || 50312);
 const SOMNIA_REACTIVITY_ENABLED = process.env.SOMNIA_REACTIVITY_ENABLED !== 'false';
 const SOMNIA_REACTIVITY_WS_URL =
-  process.env.SOMNIA_REACTIVITY_WS_URL || 'ws://api.infra.testnet.somnia.network/ws';
+  process.env.SOMNIA_REACTIVITY_WS_URL || 'wss://api.infra.testnet.somnia.network/ws';
 const SOMNIA_REACTIVITY_HTTP_URL =
   process.env.SOMNIA_REACTIVITY_HTTP_URL || 'https://dream-rpc.somnia.network';
 
@@ -79,6 +79,9 @@ export async function startSomniaReactivityBridge() {
           http: [SOMNIA_REACTIVITY_HTTP_URL],
           webSocket: [SOMNIA_REACTIVITY_WS_URL],
         },
+      },
+      contracts: {
+        multicall3: { address: '0x841b8199E6d3Db3C6f264f6C2bd8848b3cA64223' },
       },
     });
 

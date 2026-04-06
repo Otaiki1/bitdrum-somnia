@@ -20,6 +20,11 @@ const DIA_ABI = parseAbi([
   'function getValue(string key) external view returns (uint128 price, uint128 timestamp)',
 ]);
 
+const MULTICALL3_ADDRESS: Record<number, `0x${string}`> = {
+  5031: '0x5e44F178E8cF9B2F5409B6f18ce936aB817C5a11',
+  50312: '0x841b8199E6d3Db3C6f264f6C2bd8848b3cA64223',
+};
+
 const chain = defineChain({
   id: SOMNIA_CHAIN_ID,
   name: SOMNIA_CHAIN_ID === 5031 ? 'Somnia' : 'Somnia Shannon',
@@ -30,6 +35,11 @@ const chain = defineChain({
   rpcUrls: {
     default: { http: [SOMNIA_RPC_URL] },
     public: { http: [SOMNIA_RPC_URL] },
+  },
+  contracts: {
+    multicall3: {
+      address: MULTICALL3_ADDRESS[SOMNIA_CHAIN_ID] ?? '0x841b8199E6d3Db3C6f264f6C2bd8848b3cA64223',
+    },
   },
 });
 

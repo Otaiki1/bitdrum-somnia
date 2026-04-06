@@ -72,6 +72,9 @@ function buildChain() {
       default: { http: ACTIVE_SOMNIA_NETWORK.rpcUrls as string[] },
       public: { http: ACTIVE_SOMNIA_NETWORK.rpcUrls as string[] },
     },
+    contracts: {
+      multicall3: { address: ACTIVE_SOMNIA_NETWORK.multicall3Address },
+    },
   });
 }
 
