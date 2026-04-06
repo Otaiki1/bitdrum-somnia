@@ -81,14 +81,16 @@ STREAMS_PUBLISHER_ADDRESS=<keeper wallet address>
 **`backend/keeper/.env`**
 ```env
 SOMNIA_RPC_URL=https://dream-rpc.somnia.network
+SOMNIA_RPC_FALLBACK_URL=https://rpc.somnia.network
+SOMNIA_CHAIN_ID=50312
 PREDICTION_MARKET_ADDRESS=<from Phase 1>
 SETTLEMENT_ENGINE_ADDRESS=<from Phase 1>
 KEEPER_PRIVATE_KEY=<keeper wallet private key>
 KEEPER_POM_BPS=1000
 POLLING_INTERVAL=3000
-ORACLE_MAX_AGE_SECONDS=30
-# Use one of: DIA_ORACLE_URL, PROTOFIRE_ORACLE_URL, or ORACLE_STATIC_PRICE
-ORACLE_STATIC_PRICE=<current BTC price as 8-decimal integer, e.g. 10000000000000 for $100k>
+# Keeper reads BTC/USD directly from the DIA on-chain oracle (no API key needed).
+# Set ORACLE_STATIC_PRICE only as a fallback if the RPC is unavailable.
+# ORACLE_STATIC_PRICE=10500000000000    # e.g. $105,000 as 8-decimal integer
 ```
 
 **`backend/ai-agent/.env`**
@@ -178,7 +180,7 @@ cd frontend && npm install && npm run dev
 
 | Gap | Impact | Fix |
 |-----|--------|-----|
-| No DIA/Protofire oracle on testnet | Keeper needs `ORACLE_STATIC_PRICE` fallback | Integrate a live price feed later |
+| DIA oracle staleness on testnet | DIA updates every 120s; keeper `ORACLE_MAX_AGE=30` may reject if chain is behind | Increase `ORACLE_MAX_AGE` or use static fallback during testing |
 | `next.config.ts` transpiles `pyth-starknet-js` | Dead dependency, wastes build time | Remove from `transpilePackages` |
 | No `.env.example` files committed | Onboarding friction | Add after first successful deploy |
 | Keeper still uses ethers (not viem) | Inconsistency, not a bug | Migrate when touching keeper next |
