@@ -1,44 +1,73 @@
-import { Request, Response, NextFunction } from 'express';
-import { RpcProvider, Contract, num } from 'starknet';
+import { NextFunction, Request, Response } from 'express';
+import { Contract, JsonRpcProvider } from 'ethers';
 
-// Mocked contract address and ABI for SignalSubscription
-// In production, these would be loaded from a config or env
-const SUBSCRIPTION_CONTRACT_ADDRESS = process.env.SUBSCRIPTION_CONTRACT_ADDRESS || "";
+const SOMNIA_RPC_URL = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
+const SUBSCRIPTION_CONTRACT_ADDRESS = process.env.SUBSCRIPTION_CONTRACT_ADDRESS || '';
+
+const subscriptionAbi = [
+  'function isActive(address user, uint8 tier) view returns (bool)',
+];
+
+let subscriptionsContract: Contract | null = null;
+
+function resolveTier(requiredTier: string) {
+  const normalized = requiredTier.toUpperCase();
+
+  if (normalized === 'PRO') {
+    return 1;
+  }
+
+  if (normalized === 'ELITE') {
+    return 2;
+  }
+
+  return null;
+}
+
+function getSubscriptionsContract() {
+  if (!SUBSCRIPTION_CONTRACT_ADDRESS) {
+    return null;
+  }
+
+  if (!subscriptionsContract) {
+    const provider = new JsonRpcProvider(SOMNIA_RPC_URL);
+    subscriptionsContract = new Contract(SUBSCRIPTION_CONTRACT_ADDRESS, subscriptionAbi, provider);
+  }
+
+  return subscriptionsContract;
+}
 
 export const checkSubscription = async (req: Request, res: Response, next: NextFunction) => {
-  const userAddress = req.headers['x-user-address'] as string;
-  const requiredTier = req.query.tier as string; // e.g., 'PRO' or 'ELITE'
+  const requiredTier = String(req.query.tier || '');
+  const userAddress = (req.headers['x-wallet-address'] || req.headers['x-user-address']) as string | undefined;
 
   if (!requiredTier) {
-    return next(); // Free/basic signal access does not require a wallet header.
+    return next();
+  }
+
+  const tierValue = resolveTier(requiredTier);
+  if (!tierValue) {
+    return res.status(400).json({ error: `Unsupported subscription tier: ${requiredTier}` });
   }
 
   if (!userAddress) {
-    return res.status(401).json({ error: 'Missing x-user-address header' });
+    return res.status(401).json({ error: 'Missing x-wallet-address header' });
+  }
+
+  const contract = getSubscriptionsContract();
+
+  if (!contract) {
+    console.warn('[Auth] SUBSCRIPTION_CONTRACT_ADDRESS not configured, allowing request');
+    return next();
   }
 
   try {
-    // 1. Initialize Starknet Provider
-    const provider = new RpcProvider({ nodeUrl: process.env.STARKNET_RPC_URL || 'https://starknet-sepolia.public.blastapi.io' });
+    const active = await contract.isActive(userAddress, tierValue);
 
-    // 2. Check on-chain state (pseudo-code/mocked until contract is ready)
-    // We would call `get_subscription_record(address)` on the contract
-    
-    /* 
-    const { abi } = await provider.getClassAt(SUBSCRIPTION_CONTRACT_ADDRESS);
-    const contract = new Contract(abi, SUBSCRIPTION_CONTRACT_ADDRESS, provider);
-    const record = await contract.get_subscription_record(userAddress);
-    
-    const paidUntil = Number(record.paid_until);
-    const now = Math.floor(Date.now() / 1000);
-    
-    if (paidUntil < now || record.tier !== requiredTier) {
-       return res.status(403).json({ error: 'Insufficient subscription tier' });
+    if (!active) {
+      return res.status(403).json({ error: 'Insufficient subscription tier' });
     }
-    */
 
-    // For now, we'll allow all requests to proceed but log the check
-    console.log(`[Auth] Checking ${requiredTier} subscription for ${userAddress} (MOCK: ALLOWED)`);
     next();
   } catch (error) {
     console.error('Subscription check failed:', error);

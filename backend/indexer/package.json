@@ -15,6 +15,7 @@
     "@apibara/starknet": "next",
     "apibara": "next",
     "drizzle-orm": "^0.40.1",
+    "ethers": "file:../gateway/node_modules/ethers",
     "pg": "^8.14.1",
     "starknet": "^9.4.2"
   },

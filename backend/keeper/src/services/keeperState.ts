@@ -4,6 +4,7 @@ import path from 'path';
 export interface PersistedMarketState {
   marketId: string;
   joinDeadline: number;
+  expiryAt?: number;
   lastKnownState: string;
   lastSeenAt: string;
   lastAttemptAt?: string;
@@ -74,6 +75,7 @@ export function upsertMarketState(
   state.markets[marketId] = {
     marketId,
     joinDeadline: patch.joinDeadline ?? existing?.joinDeadline ?? 0,
+    expiryAt: patch.expiryAt ?? existing?.expiryAt,
     lastKnownState: patch.lastKnownState ?? existing?.lastKnownState ?? 'UNKNOWN',
     lastSeenAt: new Date().toISOString(),
     lastAttemptAt: patch.lastAttemptAt ?? existing?.lastAttemptAt,

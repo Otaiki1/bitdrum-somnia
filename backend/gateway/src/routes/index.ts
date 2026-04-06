@@ -25,14 +25,14 @@ function normalizeDirection(direction: string | null | undefined) {
   const normalized = (direction || '').toUpperCase();
 
   if (['LONG', 'UP', 'BULLISH'].includes(normalized)) {
-    return 'Long';
+    return 'UP';
   }
 
   if (['SHORT', 'DOWN', 'BEARISH'].includes(normalized)) {
-    return 'Short';
+    return 'DOWN';
   }
 
-  return 'Neutral';
+  return 'NEUTRAL';
 }
 
 function bigintFromNumeric(value: string | null | undefined) {
@@ -68,7 +68,7 @@ function calculateEntitledPayout(stakeAmount: string, pomProfitBps: number, outc
     return 0n;
   }
 
-  if (outcome === 'Draw') {
+  if (outcome === 'Draw' || normalizeDirection(outcome) === 'NEUTRAL') {
     return stake;
   }
 
@@ -88,7 +88,7 @@ function calculatePositionStatus(state: string, outcome: string | null, claimed:
     return 'CLAIMED';
   }
 
-  if (outcome === 'Draw') {
+  if (outcome === 'Draw' || normalizeDirection(outcome) === 'NEUTRAL') {
     return 'DRAW';
   }
 
@@ -169,7 +169,7 @@ function calculateTraderInfluence(positions: TraderPositionRow[]) {
       maxPositiveNetPnl > 0 && trader.netPnl > 0 ? trader.netPnl / maxPositiveNetPnl : 0;
     const participationWeight = Math.min(1, Number(trader.markets_entered || 0) / 50);
     const tis = (trader.winRate * 0.6 + normalizedNetPnl * 0.4) * participationWeight;
-    const vote = normalizeDirection(trader.direction) === 'Long' ? 1 : -1;
+    const vote = normalizeDirection(trader.direction) === 'UP' ? 1 : -1;
 
     totalWeight += tis;
     directionalBias += tis * vote;
@@ -257,6 +257,8 @@ async function getMarketContext(marketId: string) {
         market.join_deadline,
       ),
       settled_at: market.settled_at,
+      up_pool: market.long_pool,
+      down_pool: market.short_pool,
     },
     top_trader_alignment: alignment,
     signal_accuracy_last_30d: await getSignalAccuracyLast30d(),
@@ -301,9 +303,9 @@ async function getPreviewContext(direction: string, stake: string, durationSecon
   const currentShortPool = marketRows.reduce((sum, row) => sum + bigintFromNumeric(row.short_pool), 0n);
 
   const projectedLongPool =
-    normalizeDirection(direction) === 'Long' ? currentLongPool + previewStake : currentLongPool;
+    normalizeDirection(direction) === 'UP' ? currentLongPool + previewStake : currentLongPool;
   const projectedShortPool =
-    normalizeDirection(direction) === 'Short' ? currentShortPool + previewStake : currentShortPool;
+    normalizeDirection(direction) === 'DOWN' ? currentShortPool + previewStake : currentShortPool;
   const now = Math.floor(Date.now() / 1000);
   const joinDeadline = now + Math.floor(durationSeconds / 3);
 
@@ -322,6 +324,8 @@ async function getPreviewContext(direction: string, stake: string, durationSecon
       duration_seconds: durationSeconds,
       settlement_deadline: now + durationSeconds,
       settled_at: null,
+      up_pool: projectedLongPool.toString(),
+      down_pool: projectedShortPool.toString(),
     },
     top_trader_alignment: calculateTraderInfluence(positionRows),
     signal_accuracy_last_30d: await getSignalAccuracyLast30d(),
@@ -354,24 +358,26 @@ router.get('/markets', async (_req, res) => {
     const markets = rows.map((row) => ({
       id: row.market_id,
       state: row.state,
-      direction: row.opener_direction,
+      direction: normalizeDirection(row.opener_direction),
       entry_price: row.entry_price,
       settlement_price: row.settlement_price,
       long_pool: row.long_pool,
       short_pool: row.short_pool,
-        pom_profit_bps: row.pom_profit_bps,
-        outcome: row.outcome,
-        join_deadline: row.join_deadline,
-        opened_at: row.opened_at,
-        duration_seconds: row.duration_seconds,
-        settlement_deadline: calculateSettlementDeadline(
-          row.opened_at,
-          Number(row.duration_seconds || 0),
-          row.join_deadline,
-        ),
-        signal: row.signal_direction
-          ? {
-              direction: row.signal_direction,
+      up_pool: row.long_pool,
+      down_pool: row.short_pool,
+      pom_profit_bps: row.pom_profit_bps,
+      outcome: row.outcome ? normalizeDirection(row.outcome) : row.outcome,
+      join_deadline: row.join_deadline,
+      opened_at: row.opened_at,
+      duration_seconds: row.duration_seconds,
+      settlement_deadline: calculateSettlementDeadline(
+        row.opened_at,
+        Number(row.duration_seconds || 0),
+        row.join_deadline,
+      ),
+      signal: row.signal_direction
+        ? {
+            direction: normalizeDirection(row.signal_direction),
             confidence: row.signal_confidence,
             rationale: row.signal_rationale,
           }
@@ -402,9 +408,9 @@ router.get('/markets/:market_id', async (req, res) => {
 
 // 2. AI Signal (Gated)
 router.get('/signal/preview', checkSubscription, async (req, res) => {
-  const direction = String(req.query.direction || 'Long');
+  const direction = String(req.query.direction || 'UP');
   const stake = String(req.query.stake || '0');
-  const durationSeconds = Number(req.query.durationSeconds || 300);
+  const durationSeconds = Number(req.query.durationSeconds || req.query.duration_seconds || 300);
 
   try {
     const response = await axios.post(`${AI_AGENT_URL}/signal/preview`, {
@@ -461,9 +467,9 @@ router.get('/signal/:market_id', checkSubscription, async (req, res) => {
 });
 
 router.get('/pom/preview', async (req, res) => {
-  const direction = String(req.query.direction || 'Long');
+  const direction = String(req.query.direction || 'UP');
   const stake = String(req.query.stake || '0');
-  const durationSeconds = Number(req.query.durationSeconds || 300);
+  const durationSeconds = Number(req.query.durationSeconds || req.query.duration_seconds || 300);
 
   try {
     const response = await axios.get(`${AI_AGENT_URL}/pom-preview`, {
@@ -568,11 +574,13 @@ router.get('/positions/:address', async (req, res) => {
       const canClaim =
         !row.claimed &&
         row.state === 'CLAIMABLE' &&
-        (row.outcome === 'Draw' || normalizeDirection(row.direction) === normalizeDirection(row.outcome));
+        (row.outcome === 'Draw'
+          || normalizeDirection(row.outcome) === 'NEUTRAL'
+          || normalizeDirection(row.direction) === normalizeDirection(row.outcome));
 
       return {
         market_id: row.market_id,
-        direction: row.direction,
+        direction: normalizeDirection(row.direction),
         stake_amount: row.stake_amount,
         claimed: row.claimed,
         payout: row.payout,
@@ -581,7 +589,7 @@ router.get('/positions/:address', async (req, res) => {
         state: row.state,
         entry_price: row.entry_price,
         settlement_price: row.settlement_price,
-        outcome: row.outcome,
+        outcome: row.outcome ? normalizeDirection(row.outcome) : row.outcome,
         transaction_hash: row.transaction_hash,
         duration_seconds: row.duration_seconds ?? 300,
         join_deadline: row.join_deadline,
@@ -785,12 +793,14 @@ router.get('/feed', async (req, res) => {
         market_id: row.market_id,
         participant_address: row.participant_address,
         action: row.participant_address.toLowerCase() === row.opener_address.toLowerCase() ? 'OPENED' : 'JOINED',
-        direction: row.direction,
+        direction: normalizeDirection(row.direction),
         stake_amount: row.stake_amount,
         timestamp: row.timestamp,
         tier: row.tier || 'SCOUT',
         long_pool: row.long_pool,
         short_pool: row.short_pool,
+        up_pool: row.long_pool,
+        down_pool: row.short_pool,
         state: row.state,
         pom_profit_bps: row.pom_profit_bps,
         duration_seconds: row.duration_seconds ?? 300,
@@ -803,7 +813,7 @@ router.get('/feed', async (req, res) => {
         ),
         signal: signal
           ? {
-              direction: signal.direction,
+              direction: normalizeDirection(signal.direction),
               confidence: signal.confidence,
               rationale: signal.rationale,
             }
@@ -821,9 +831,9 @@ router.get('/feed', async (req, res) => {
 // 6. Internal AI / POM support
 router.get('/internal/market-context/preview', async (req, res) => {
   try {
-    const direction = String(req.query.direction || 'Long');
+    const direction = String(req.query.direction || 'UP');
     const stake = String(req.query.stake || '0');
-    const durationSeconds = Number(req.query.durationSeconds || 300);
+    const durationSeconds = Number(req.query.durationSeconds || req.query.duration_seconds || 300);
     const context = await getPreviewContext(direction, stake, durationSeconds);
     res.json(context);
   } catch (error: any) {
@@ -872,5 +882,5 @@ router.post('/internal/ai-signals', async (req, res) => {
   }
 });
 
-// 7. Starkzap Middleware
+// 7. Gateway Router
 export default router;

@@ -1,77 +1,132 @@
-import { CairoCustomEnum, Contract, RpcProvider } from 'starknet';
-
-const PRAGMA_ORACLE_ADDRESS = process.env.PRAGMA_ORACLE_ADDRESS || '';
-const BTC_USD_PAIR_ID = '18669995996566340';
-
-export interface PragmaPriceSnapshot {
-  price: string;
-  decimals: number;
-  lastUpdatedTimestamp: number;
-  numSourcesAggregated: number;
+export interface OraclePriceSnapshot {
+  price: bigint;
+  timestamp: number;
+  source: 'dia' | 'protofire' | 'static';
 }
 
-let pragmaOracleContract: Contract | null = null;
+type OraclePayload = {
+  price: bigint;
+  timestamp: number;
+};
 
-function toDecimalString(value: unknown): string {
+const DIA_ORACLE_URL = process.env.DIA_ORACLE_URL || '';
+const PROTOFIRE_ORACLE_URL = process.env.PROTOFIRE_ORACLE_URL || '';
+const STATIC_ORACLE_PRICE = process.env.ORACLE_STATIC_PRICE || '';
+
+function normalizeBigInt(value: unknown): bigint {
   if (typeof value === 'bigint') {
-    return value.toString();
-  }
-
-  if (typeof value === 'number') {
-    return Math.trunc(value).toString();
-  }
-
-  if (typeof value === 'string') {
     return value;
   }
 
-  if (value && typeof value === 'object' && 'toString' in value) {
-    return String(value.toString());
+  if (typeof value === 'number') {
+    return BigInt(Math.trunc(value));
   }
 
-  return '0';
-}
-
-function toSafeNumber(value: unknown): number {
-  return Number(toDecimalString(value));
-}
-
-async function getPragmaOracleContract(provider: RpcProvider) {
-  if (!PRAGMA_ORACLE_ADDRESS) {
-    throw new Error('Missing PRAGMA_ORACLE_ADDRESS');
+  if (typeof value === 'string') {
+    if (value.includes('.')) {
+      return BigInt(value.replace('.', ''));
+    }
+    return BigInt(value);
   }
 
-  if (!pragmaOracleContract) {
-    const pragmaClass = await provider.getClassAt(PRAGMA_ORACLE_ADDRESS);
-    pragmaOracleContract = new Contract({
-      abi: pragmaClass.abi,
-      address: PRAGMA_ORACLE_ADDRESS,
-      providerOrAccount: provider,
-    });
-  }
-
-  return pragmaOracleContract;
+  throw new Error('Unsupported oracle price format');
 }
 
-export async function fetchPragmaPrice(provider: RpcProvider): Promise<PragmaPriceSnapshot> {
-  const oracle = await getPragmaOracleContract(provider);
-  const dataType = new CairoCustomEnum({
-    SpotEntry: BTC_USD_PAIR_ID,
-    FutureEntry: undefined,
-    GenericEntry: undefined,
+function normalizeTimestamp(value: unknown) {
+  if (typeof value === 'number') {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === 'string') {
+    return Math.trunc(Number(value));
+  }
+
+  throw new Error('Unsupported oracle timestamp format');
+}
+
+function extractPayload(json: any): OraclePayload {
+  const candidates = [
+    json,
+    json?.data,
+    json?.price,
+    json?.result,
+    json?.result?.data,
+    json?.BTCUSD,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
+    const priceValue =
+      candidate.price ??
+      candidate.value ??
+      candidate.median ??
+      candidate.latestAnswer ??
+      candidate.answer;
+    const timestampValue =
+      candidate.timestamp ??
+      candidate.updatedAt ??
+      candidate.updated_at ??
+      candidate.publishTime ??
+      candidate.time;
+
+    if (priceValue !== undefined && timestampValue !== undefined) {
+      return {
+        price: normalizeBigInt(priceValue),
+        timestamp: normalizeTimestamp(timestampValue),
+      };
+    }
+  }
+
+  throw new Error('Unable to normalize oracle payload');
+}
+
+async function fetchFromUrl(url: string): Promise<OraclePayload> {
+  const response = await fetch(url, {
+    headers: { accept: 'application/json' },
   });
 
-  const response: any = await oracle.get_data_median(dataType);
-  const snapshot: PragmaPriceSnapshot = {
-    price: toDecimalString(response.price),
-    decimals: toSafeNumber(response.decimals),
-    lastUpdatedTimestamp: toSafeNumber(response.last_updated_timestamp),
-    numSourcesAggregated: toSafeNumber(response.num_sources_aggregated),
-  };
-
-  if (!snapshot.price || snapshot.price === '0') {
-    throw new Error('Pragma oracle returned an empty BTC/USD price');
+  if (!response.ok) {
+    throw new Error(`Oracle request failed with status ${response.status}`);
   }
 
-  return snapshot;
+  const payload = await response.json();
+  return extractPayload(payload);
+}
+
+function staticSnapshot(): OraclePriceSnapshot | null {
+  if (!STATIC_ORACLE_PRICE) {
+    return null;
+  }
+
+  return {
+    price: normalizeBigInt(STATIC_ORACLE_PRICE),
+    timestamp: Math.floor(Date.now() / 1000),
+    source: 'static',
+  };
+}
+
+export async function fetchOraclePrice(): Promise<OraclePriceSnapshot> {
+  if (DIA_ORACLE_URL) {
+    try {
+      const payload = await fetchFromUrl(DIA_ORACLE_URL);
+      return { ...payload, source: 'dia' };
+    } catch (error) {
+      console.warn('[Keeper] DIA oracle fetch failed, trying fallback:', error);
+    }
+  }
+
+  if (PROTOFIRE_ORACLE_URL) {
+    const payload = await fetchFromUrl(PROTOFIRE_ORACLE_URL);
+    return { ...payload, source: 'protofire' };
+  }
+
+  const snapshot = staticSnapshot();
+  if (snapshot) {
+    return snapshot;
+  }
+
+  throw new Error('No oracle source configured. Set DIA_ORACLE_URL, PROTOFIRE_ORACLE_URL, or ORACLE_STATIC_PRICE.');
 }

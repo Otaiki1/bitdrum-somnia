@@ -1,222 +1,160 @@
-import {
-  Account,
-  CairoOption,
-  CairoOptionVariant,
-  Contract,
-  RpcProvider,
-} from 'starknet';
+import { Contract, JsonRpcProvider, Wallet } from 'ethers';
 import dotenv from 'dotenv';
-import { fetchPragmaPrice, type PragmaPriceSnapshot } from './oracle';
+import { fetchOraclePrice } from './oracle';
 import { loadKeeperState, saveKeeperState, upsertMarketState } from './keeperState';
 
 dotenv.config();
 
-const MARKET_CONTRACT_ADDRESS = process.env.MARKET_CONTRACT_ADDRESS || '';
+const SOMNIA_RPC_URL = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
+const PREDICTION_MARKET_ADDRESS = process.env.PREDICTION_MARKET_ADDRESS || '';
 const SETTLEMENT_ENGINE_ADDRESS = process.env.SETTLEMENT_ENGINE_ADDRESS || '';
-const KEEPER_ADDRESS = process.env.KEEPER_ADDRESS || '';
 const KEEPER_PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY || '';
-const SETTLEMENT_DELAY_SECONDS = Number(process.env.SETTLEMENT_DELAY_SECONDS || 60);
-const MAX_ATTESTATION_AGE_SECONDS = Number(process.env.ATTESTATION_MAX_AGE_SECONDS || 30);
+const KEEPERS_POM_BPS = Number(process.env.KEEPER_POM_BPS || 0);
+const ORACLE_MAX_AGE_SECONDS = Number(process.env.ORACLE_MAX_AGE_SECONDS || 30);
 
-const provider = new RpcProvider({
-  nodeUrl: process.env.STARKNET_RPC_URL || 'https://starknet-sepolia.public.blastapi.io',
-  specVersion: '0.9.0',
-  blockIdentifier: 'latest',
-});
+const provider = new JsonRpcProvider(SOMNIA_RPC_URL);
+const signer = KEEPER_PRIVATE_KEY ? new Wallet(KEEPER_PRIVATE_KEY, provider) : null;
 
-const account = new Account({
-  provider,
-  address: KEEPER_ADDRESS,
-  signer: KEEPER_PRIVATE_KEY,
-});
+const marketAbi = [
+  'function nextMarketId() view returns (uint256)',
+  'function getMarket(uint256 marketId) view returns ((uint256 marketId,address opener,uint8 openerDirection,uint256 duration,uint256 openedAt,uint256 joiningWindowEnd,uint256 expiryAt,uint128 strikePrice,uint128 settlementPrice,uint128 strikeTimestamp,uint128 settlementTimestamp,uint256 pomProfitBps,uint256 upPool,uint256 downPool,uint256 totalUserStaked,uint256 vaultCommitted,uint256 feeAmount,uint256 sweptToVault,uint256 participantCount,uint256 claimedCount,uint8 state,uint8 outcome))',
+  'function setPomProfitBps(uint256 marketId, uint256 pomProfitBps)',
+  'function lockMarket(uint256 marketId)',
+];
 
-let predictionMarketContract: Contract | null = null;
-let settlementEngineContract: Contract | null = null;
+const settlementEngineAbi = [
+  'function settle(uint256 marketId, tuple(uint128 price, uint128 timestamp) priceData)',
+];
 
-const MARKET_STATES = {
-  Placeholder: 0,
-  Open: 1,
-  Locked: 2,
-  Settled: 3,
-  Claimable: 4,
-  Closed: 5,
+type MarketSnapshot = {
+  marketId: bigint;
+  opener: string;
+  openerDirection: number;
+  duration: bigint;
+  openedAt: bigint;
+  joiningWindowEnd: bigint;
+  expiryAt: bigint;
+  strikePrice: bigint;
+  settlementPrice: bigint;
+  strikeTimestamp: bigint;
+  settlementTimestamp: bigint;
+  pomProfitBps: bigint;
+  upPool: bigint;
+  downPool: bigint;
+  totalUserStaked: bigint;
+  vaultCommitted: bigint;
+  feeAmount: bigint;
+  sweptToVault: bigint;
+  participantCount: bigint;
+  claimedCount: bigint;
+  state: number;
+  outcome: number;
+};
+
+const MARKET_STATE = {
+  NONE: 0,
+  OPEN: 1,
+  LOCKED: 2,
+  CLAIMABLE: 3,
+  CLOSED: 4,
 } as const;
 
-function toDecimalString(value: unknown): string {
-  if (typeof value === 'bigint') {
-    return value.toString();
-  }
+const marketContract = signer ? new Contract(PREDICTION_MARKET_ADDRESS, marketAbi, signer) : null;
+const settlementEngineContract = signer
+  ? new Contract(SETTLEMENT_ENGINE_ADDRESS, settlementEngineAbi, signer)
+  : null;
 
-  if (typeof value === 'number') {
-    return Math.trunc(value).toString();
+function assertKeeperReady() {
+  if (!marketContract || !settlementEngineContract) {
+    throw new Error('Keeper is missing PREDICTION_MARKET_ADDRESS, SETTLEMENT_ENGINE_ADDRESS, or KEEPER_PRIVATE_KEY');
   }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (value && typeof value === 'object' && 'toString' in value) {
-    return String(value.toString());
-  }
-
-  return '0';
 }
 
-function toSafeNumber(value: unknown): number {
-  return Number(toDecimalString(value));
+function toNumber(value: bigint) {
+  return Number(value);
 }
 
 function marketStateLabel(state: number) {
-  return Object.entries(MARKET_STATES).find(([, value]) => value === state)?.[0] || 'Unknown';
+  if (state === MARKET_STATE.OPEN) return 'OPEN';
+  if (state === MARKET_STATE.LOCKED) return 'LOCKED';
+  if (state === MARKET_STATE.CLAIMABLE) return 'CLAIMABLE';
+  if (state === MARKET_STATE.CLOSED) return 'CLOSED';
+  return 'NONE';
 }
 
-function parseMarketState(state: any): number {
-  if (typeof state === 'number') {
-    return state;
-  }
+function assertFreshSnapshot(timestamp: number) {
+  const age = Math.floor(Date.now() / 1000) - timestamp;
 
-  if (typeof state === 'bigint') {
-    return Number(state);
+  if (age < 0 || age > ORACLE_MAX_AGE_SECONDS) {
+    throw new Error(`Oracle snapshot is stale (${age}s old)`);
   }
-
-  if (typeof state === 'string') {
-    return MARKET_STATES[state as keyof typeof MARKET_STATES] ?? Number(state);
-  }
-
-  if (typeof state?.activeVariant === 'function') {
-    return MARKET_STATES[state.activeVariant() as keyof typeof MARKET_STATES] ?? 0;
-  }
-
-  if (state?.variant && typeof state.variant === 'object') {
-    const activeEntry = Object.entries(state.variant).find(([, value]) => value !== undefined);
-    if (activeEntry) {
-      return MARKET_STATES[activeEntry[0] as keyof typeof MARKET_STATES] ?? 0;
-    }
-  }
-
-  return Number(state ?? 0);
 }
 
-function buildSettlementPayload(snapshot: PragmaPriceSnapshot) {
-  return {
-    price: snapshot.price,
-    decimals: snapshot.decimals,
-    last_updated_timestamp: snapshot.lastUpdatedTimestamp,
-    num_sources_aggregated: snapshot.numSourcesAggregated,
-    expiration_timestamp: new CairoOption(CairoOptionVariant.None),
-  };
-}
-
-async function getPredictionMarketContract() {
-  if (!predictionMarketContract) {
-    const marketClass = await provider.getClassAt(MARKET_CONTRACT_ADDRESS);
-    predictionMarketContract = new Contract({
-      abi: marketClass.abi,
-      address: MARKET_CONTRACT_ADDRESS,
-      providerOrAccount: provider,
-    });
-  }
-
-  return predictionMarketContract;
-}
-
-async function getSettlementEngineContract() {
-  if (!settlementEngineContract) {
-    const engineClass = await provider.getClassAt(SETTLEMENT_ENGINE_ADDRESS);
-    settlementEngineContract = new Contract({
-      abi: engineClass.abi,
-      address: SETTLEMENT_ENGINE_ADDRESS,
-      providerOrAccount: provider,
-    });
-  }
-
-  return settlementEngineContract;
-}
-
-function assertFreshSnapshot(snapshot: PragmaPriceSnapshot, currentTimestamp: number) {
-  const attestationAge = currentTimestamp - snapshot.lastUpdatedTimestamp;
-
-  if (attestationAge < 0) {
-    throw new Error('Pragma oracle timestamp is in the future');
-  }
-
-  if (attestationAge > MAX_ATTESTATION_AGE_SECONDS) {
-    throw new Error(`Pragma oracle snapshot is stale (${attestationAge}s old)`);
-  }
+async function fetchMarketSnapshot(marketId: number): Promise<MarketSnapshot> {
+  assertKeeperReady();
+  return (await marketContract!.getMarket(marketId)) as MarketSnapshot;
 }
 
 export const settleExpiredMarkets = async () => {
   const keeperState = await loadKeeperState();
 
   try {
-    const marketContract = await getPredictionMarketContract();
-    const engineContract = await getSettlementEngineContract();
+    assertKeeperReady();
+    const lastMarketId = Number(await marketContract!.nextMarketId());
     const currentTimestamp = Math.floor(Date.now() / 1000);
-    const marketCount = toSafeNumber(await marketContract.market_count());
 
-    for (let marketId = 1; marketId <= marketCount; marketId += 1) {
+    for (let marketId = 1; marketId <= lastMarketId; marketId += 1) {
       try {
-        const market: any = await marketContract.get_market(marketId);
-        const state = parseMarketState(market.state);
-        const joinDeadline = toSafeNumber(market.join_deadline);
+        const market = await fetchMarketSnapshot(marketId);
+        const joinDeadline = toNumber(market.joiningWindowEnd);
+        const expiryAt = toNumber(market.expiryAt);
 
         upsertMarketState(keeperState, String(marketId), {
           joinDeadline,
-          lastKnownState: marketStateLabel(state),
+          expiryAt,
+          lastKnownState: marketStateLabel(market.state),
         });
 
-        if (state === MARKET_STATES.Open && currentTimestamp >= joinDeadline) {
-          const snapshot = await fetchPragmaPrice(provider);
-          assertFreshSnapshot(snapshot, currentTimestamp);
+        if (market.state === MARKET_STATE.OPEN && currentTimestamp >= joinDeadline) {
+          if (KEEPERS_POM_BPS > 0 && Number(market.pomProfitBps) !== KEEPERS_POM_BPS) {
+            const pomTx = await marketContract!.setPomProfitBps(marketId, KEEPERS_POM_BPS);
+            await pomTx.wait();
+          }
 
-          console.log(
-            `[Keeper] Locking market ${marketId} at ${snapshot.price} (${snapshot.lastUpdatedTimestamp})`,
-          );
-
-          const lockCall = marketContract.populate('lock_market', [marketId]);
-          const setEntryPriceCall = engineContract.populate('set_entry_price', [
-            marketId,
-            snapshot.price,
-          ]);
-
-          const { transaction_hash } = await account.execute([lockCall, setEntryPriceCall]);
+          const lockTx = await marketContract!.lockMarket(marketId);
+          await lockTx.wait();
 
           upsertMarketState(keeperState, String(marketId), {
             joinDeadline,
-            lastKnownState: 'Locked',
+            expiryAt,
+            lastKnownState: 'LOCKED',
             lastAttemptAt: new Date().toISOString(),
-            entryPrice: snapshot.price,
-            lockTxHash: transaction_hash,
+            lockTxHash: lockTx.hash,
+            lastError: undefined,
           });
 
-          console.log(`[Keeper] Market ${marketId} locked: ${transaction_hash}`);
           continue;
         }
 
-        if (state === MARKET_STATES.Locked && currentTimestamp >= joinDeadline + SETTLEMENT_DELAY_SECONDS) {
-          const snapshot = await fetchPragmaPrice(provider);
-          assertFreshSnapshot(snapshot, currentTimestamp);
+        if (market.state === MARKET_STATE.LOCKED && currentTimestamp >= expiryAt) {
+          const snapshot = await fetchOraclePrice();
+          assertFreshSnapshot(snapshot.timestamp);
 
-          console.log(
-            `[Keeper] Settling market ${marketId} at ${snapshot.price} (${snapshot.lastUpdatedTimestamp})`,
-          );
-
-          const settleCall = engineContract.populate('settle', [
-            marketId,
-            buildSettlementPayload(snapshot),
-          ]);
-
-          const { transaction_hash } = await account.execute(settleCall);
+          const tx = await settlementEngineContract!.settle(marketId, {
+            price: snapshot.price,
+            timestamp: snapshot.timestamp,
+          });
+          await tx.wait();
 
           upsertMarketState(keeperState, String(marketId), {
             joinDeadline,
-            lastKnownState: 'Claimable',
+            expiryAt,
+            lastKnownState: 'CLAIMABLE',
             lastAttemptAt: new Date().toISOString(),
-            settlementPrice: snapshot.price,
-            settlementTxHash: transaction_hash,
+            settlementPrice: snapshot.price.toString(),
+            settlementTxHash: tx.hash,
+            lastError: undefined,
           });
-
-          console.log(`[Keeper] Settlement submitted for ${marketId}: ${transaction_hash}`);
         }
       } catch (error: any) {
         upsertMarketState(keeperState, String(marketId), {
