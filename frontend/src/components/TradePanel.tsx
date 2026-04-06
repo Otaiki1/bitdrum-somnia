@@ -25,6 +25,7 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
+import { readMarketAndBalance } from '../utils/contracts';
 
 function signalTone(direction: string) {
   if (direction === 'UP') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
@@ -56,11 +57,22 @@ export const TradePanel = ({
   const activeTimeframeSeconds = Number(selectedMarket?.duration_seconds || 300);
 
   const marketDetailQuery = useQuery({
-    queryKey: ['market-detail', selectedMarket?.id],
+    queryKey: ['market-detail-onchain', selectedMarket?.id, wallet?.address],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/markets/${selectedMarket?.id}`);
+      if (!selectedMarket?.id) return null;
+      if (wallet?.address) {
+        // Single multicall: market state + user WBTC balance
+        const { market, wbtcBalance } = await readMarketAndBalance(
+          selectedMarket.id,
+          wallet.address,
+        );
+        return { market, wbtcBalance };
+      }
+      // Fallback to gateway if wallet not connected
+      const response = await fetch(`${API_BASE}/markets/${selectedMarket.id}`);
       if (!response.ok) throw new Error('Unable to load selected market');
-      return response.json();
+      const data = await response.json();
+      return { market: data.market, wbtcBalance: null };
     },
     enabled: Boolean(selectedMarket?.id),
     refetchInterval: false, // WS invalidations drive refreshes; no background polling needed
@@ -96,6 +108,8 @@ export const TradePanel = ({
   const activeMarket = selectedMarket?.id
     ? { ...selectedMarket, ...marketDetailQuery.data?.market }
     : null;
+
+  const wbtcBalance = marketDetailQuery.data?.wbtcBalance ?? null;
 
   const signal = signalQuery.data?.signal;
   const pom = pomQuery.data?.pom;
@@ -292,9 +306,16 @@ export const TradePanel = ({
       )}
 
       <div className="flex flex-col gap-2">
-        <label className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-          Stake (WBTC)
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
+            Stake (WBTC)
+          </label>
+          {wbtcBalance !== null ? (
+            <span className="text-[10px] font-mono text-slate-500">
+              Balance: {formatTokenAmount(wbtcBalance.toString())} WBTC
+            </span>
+          ) : null}
+        </div>
         <input
           type="number"
           min="0"
