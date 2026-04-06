@@ -126,8 +126,9 @@ export PRIVATE_KEY=0x<deployer_key>
 forge script script/Deploy.s.sol \
   --rpc-url https://dream-rpc.somnia.network \
   --broadcast --verify \
-  --value 10ether        # seeds the vault with 10 STT
 ```
+
+If Shannon deployment transactions fail immediately during every `CREATE`, recompile for a pre-Shanghai EVM target. The repo is pinned to `evm_version = "paris"` in [contracts/foundry.toml](/Users/0t41k1/Documents/somnia/bitdrum/contracts/foundry.toml) because Somnia Shannon can reject bytecode that uses newer opcodes such as `PUSH0`.
 
 The script prints six addresses. Record them — you need them in every `.env` file.
 
