@@ -13,8 +13,8 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react';
-import { useCartridgeWallet } from './CartridgeWalletProvider';
-import { API_BASE } from '../utils/starkzap';
+import { useBitdrumWallet } from './BitdrumWalletProvider';
+import { API_BASE } from '../utils/somnia';
 import {
   formatOraclePrice,
   formatTimeframe,
@@ -44,9 +44,9 @@ export const TradePanel = ({
   onTradeSubmitted?: (record: TradeExecutionRecord) => void;
 }) => {
   const queryClient = useQueryClient();
-  const { wallet, authenticated, connecting, connect } = useCartridgeWallet();
+  const { wallet, authenticated, connecting, connect } = useBitdrumWallet();
 
-  const [stake, setStake] = useState('10');
+  const [stake, setStake] = useState('0.001');
   const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
   const [isPending, setIsPending] = useState(false);
   const [lastRecord, setLastRecord] = useState<TradeExecutionRecord | null>(null);
@@ -117,17 +117,17 @@ export const TradePanel = ({
     try {
       await connect();
     } catch (caughtError: any) {
-      setError(caughtError?.message || 'Cartridge connection failed');
+      setError(caughtError?.message || 'Wallet connection failed');
     }
   };
 
   const handleTrade = async (direction: BitdrumDirection) => {
     if (!authenticated || !wallet) {
-      setError('Connect Cartridge to trade.');
+      setError('Connect a Somnia wallet to trade.');
       return;
     }
     if (!stake || Number(stake) <= 0 || Number.isNaN(Number(stake))) {
-      setError('Enter a valid STRK stake.');
+      setError('Enter a valid WBTC stake.');
       return;
     }
 
@@ -142,13 +142,20 @@ export const TradePanel = ({
       const timeframeSeconds = Number(activeMarket?.duration_seconds || 300);
 
       if (mode === 'open') {
-        const pomResponse = await fetch(
-          `${API_BASE}/pom/preview?direction=${direction}&stake=${stake}`,
-        );
-        const pomPayload = pomResponse.ok ? await pomResponse.json() : null;
-        const pomProfitBps = Number(pomPayload?.pom?.pom_profit_bps || currentPomBps);
+        const resolvedCurrentPrice =
+          currentPrice ?? formatOraclePrice(activeMarket?.entry_price) ?? null;
 
-        tx = await openMarket({ wallet, direction, stake, pomProfitBps });
+        if (!resolvedCurrentPrice) {
+          throw new Error('Live BTC strike price is unavailable right now.');
+        }
+
+        tx = await openMarket({
+          wallet,
+          direction,
+          stake,
+          durationSeconds: timeframeSeconds,
+          currentPrice: resolvedCurrentPrice,
+        });
         kind = 'OPEN';
       } else if (activeMarket?.id) {
         tx = await joinMarket({ wallet, marketId: activeMarket.id, direction, stake });
@@ -219,7 +226,7 @@ export const TradePanel = ({
             </h3>
             <p className="mt-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
               <Zap className="h-3 w-3 text-orange-400" />
-              Cartridge + Dynamic POM
+              Somnia + Dynamic POM
             </p>
           </div>
         </div>
@@ -247,12 +254,12 @@ export const TradePanel = ({
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs text-slate-300">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Long Pool</p>
-              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.long_pool)} STRK</p>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">UP Pool</p>
+              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.up_pool ?? activeMarket.long_pool)} WBTC</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Short Pool</p>
-              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.short_pool)} STRK</p>
+              <p className="text-[10px] uppercase tracking-[0.22em] text-slate-500">DOWN Pool</p>
+              <p className="mt-1 font-mono">{formatTokenAmount(activeMarket.down_pool ?? activeMarket.short_pool)} WBTC</p>
             </div>
             {activeMarket.duration_seconds ? (
               <div>
@@ -286,7 +293,7 @@ export const TradePanel = ({
 
       <div className="flex flex-col gap-2">
         <label className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">
-          Stake (STRK)
+          Stake (WBTC)
         </label>
         <input
           type="number"
@@ -336,11 +343,11 @@ export const TradePanel = ({
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="mb-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
           <span>Projected Profit</span>
-          <span className="text-emerald-300">+{projectedProfit.toFixed(3)} STRK</span>
+          <span className="text-emerald-300">+{projectedProfit.toFixed(6)} WBTC</span>
         </div>
         <div className="text-xs text-slate-400">
           If the trade settles in your favour at {(currentPomBps / 100).toFixed(2)}%, your payout
-          estimate is {(Number(stake || '0') + projectedProfit).toFixed(3)} STRK.
+          estimate is {(Number(stake || '0') + projectedProfit).toFixed(6)} WBTC.
         </div>
       </div>
 
@@ -407,7 +414,7 @@ export const TradePanel = ({
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-orange-500/30 bg-orange-500/10 p-3 text-[10px] font-black uppercase tracking-[0.28em] text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Wallet className="h-4 w-4" />
-          {connecting ? 'Connecting Cartridge...' : 'Connect Cartridge To Trade'}
+          {connecting ? 'Connecting Wallet...' : 'Connect Wallet To Trade'}
         </button>
       ) : null}
 

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowUpRight, Radio, Trophy, UserPlus } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { API_BASE, WS_URL } from '../utils/starkzap';
+import { API_BASE, WS_URL } from '../utils/somnia';
 import {
   formatTimeframe,
   formatTokenAmount,
@@ -245,14 +245,14 @@ export const MarketFeed = ({
                     item.direction,
                   )}`}
                 >
-                  {item.direction.toUpperCase() === 'LONG' ? 'UP' : 'DOWN'}
+                  {item.direction.toUpperCase() === 'UP' ? 'UP' : 'DOWN'}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
                 <div>
                   Stake
-                  <div className="mt-1 font-mono text-white">{formatTokenAmount(item.stake_amount)} STRK</div>
+                  <div className="mt-1 font-mono text-white">{formatTokenAmount(item.stake_amount)} WBTC</div>
                 </div>
                 <div>
                   Pool

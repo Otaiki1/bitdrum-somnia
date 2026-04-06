@@ -6,7 +6,7 @@ import { Bell, LogOut, Menu, Wallet, ExternalLink, TrendingUp, TrendingDown, Tro
 import { PriceChart, type TradeMarker } from './PriceChart';
 import { TradePanel } from './TradePanel';
 import { LeaderboardCard, MarketFeed } from './SocialFeed';
-import { useCartridgeWallet } from './CartridgeWalletProvider';
+import { useBitdrumWallet } from './BitdrumWalletProvider';
 import {
   claimMarket,
   formatTimeframe,
@@ -16,7 +16,7 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
-import { API_BASE } from '../utils/starkzap';
+import { API_BASE } from '../utils/somnia';
 
 // ─── Win / Lose Modal ───────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ function OutcomeModal({
           <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
             <p className="text-[9px] font-black uppercase tracking-[0.28em] text-slate-500">Stake</p>
             <p className="mt-1 font-mono text-sm font-bold text-white">
-              {formatTokenAmount(position.stake_amount)} STRK
+              {formatTokenAmount(position.stake_amount)} WBTC
             </p>
           </div>
           <div
@@ -119,7 +119,7 @@ function OutcomeModal({
               }`}
             >
               {isWin || isDraw ? '+' : ''}
-              {formatTokenAmount(position.net_pnl)} STRK
+              {formatTokenAmount(position.net_pnl)} WBTC
             </p>
           </div>
         </div>
@@ -175,7 +175,7 @@ export const TradingDashboard = () => {
     connect,
     disconnect,
     openProfile,
-  } = useCartridgeWallet();
+  } = useBitdrumWallet();
 
   const [showAccount, setShowAccount] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
@@ -236,7 +236,7 @@ export const TradingDashboard = () => {
         time: Math.floor(new Date(t.submittedAt).getTime() / 1000),
         price: t.entryPrice,
         direction: t.direction,
-        label: `${t.direction} ${t.stake} STRK`,
+        label: `${t.direction} ${t.stake} WBTC`,
       });
     }
 
@@ -296,7 +296,7 @@ export const TradingDashboard = () => {
   };
 
   const shortWallet = viewerAddress ? shortAddress(viewerAddress) : '';
-  const identityLabel = username || shortWallet || 'Controller';
+  const identityLabel = username || shortWallet || 'Wallet';
 
   return (
     <div className="relative min-h-screen bg-[#0a0a0a] p-4 text-white selection:bg-orange-500 selection:text-white md:p-8">
@@ -318,10 +318,10 @@ export const TradingDashboard = () => {
             <div className="mb-8 flex items-start justify-between">
               <div>
                 <h2 className="text-3xl font-black uppercase italic tracking-tight text-white">
-                  Controller Session
+                  Somnia Wallet Session
                 </h2>
                 <p className="mt-2 text-[10px] font-black uppercase tracking-[0.32em] text-slate-500">
-                  Cartridge Access
+                  Wallet Access
                 </p>
               </div>
               <button
@@ -335,9 +335,9 @@ export const TradingDashboard = () => {
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
               <div className="space-y-5">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">Controller Handle</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">Wallet Label</p>
                   <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-200">
-                    {username || 'Anonymous Controller'}
+                    {username || 'Injected Wallet'}
                   </div>
                 </div>
                 <div>
@@ -351,7 +351,7 @@ export const TradingDashboard = () => {
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Session Mode</p>
                   <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                    Cartridge handles wallet auth and transaction approval directly through the controller session.
+                    Connect an injected EVM wallet on Somnia Shannon or mainnet to manage approvals and trades.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
@@ -359,7 +359,7 @@ export const TradingDashboard = () => {
                     onClick={() => void openProfile()}
                     className="rounded-xl bg-orange-500 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-black transition hover:bg-orange-400"
                   >
-                    Open Cartridge Profile
+                    Open Explorer Profile
                   </button>
                   <button
                     onClick={() => void handleDisconnect()}
@@ -394,7 +394,7 @@ export const TradingDashboard = () => {
             onClick={() => authenticated && setShowAccount(true)}
             className="border-b-2 border-transparent pb-1 text-xs font-black uppercase italic tracking-tight text-slate-500 transition hover:border-white/20 hover:text-white"
           >
-            Controller
+            Wallet
           </button>
           <button className="border-b-2 border-transparent pb-1 text-xs font-black uppercase italic tracking-tight text-slate-500 transition hover:border-white/20 hover:text-white">
             Leaderboard
@@ -424,7 +424,7 @@ export const TradingDashboard = () => {
               className="flex items-center gap-3 rounded-2xl border border-orange-500/40 bg-orange-500/10 px-6 py-3 text-sm font-black uppercase italic tracking-tight text-orange-200 transition hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Wallet className="h-5 w-5" />
-              {connecting ? 'Connecting...' : 'Connect Cartridge'}
+              {connecting ? 'Connecting...' : 'Connect Wallet'}
             </button>
           )}
 
@@ -461,7 +461,7 @@ export const TradingDashboard = () => {
                   <TrendingDown className="h-4 w-4 text-rose-400" />
                 )}
                 <span className="font-black uppercase tracking-widest text-white">
-                  {t.direction} · {t.stake} STRK
+                  {t.direction} · {t.stake} WBTC
                 </span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
@@ -520,7 +520,7 @@ export const TradingDashboard = () => {
                   Win Rate {((positionSummary?.win_rate || 0) * 100).toFixed(1)}%
                 </span>
                 <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">
-                  PnL {livePnL} STRK
+                  PnL {livePnL} WBTC
                 </span>
               </div>
             </div>
@@ -532,7 +532,7 @@ export const TradingDashboard = () => {
                 </div>
               ) : positions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
-                  {authenticated ? 'No active stakes yet' : 'Connect Cartridge to load positions'}
+                  {authenticated ? 'No active stakes yet' : 'Connect wallet to load positions'}
                 </div>
               ) : (
                 positions.map((position: any) => (
@@ -584,16 +584,16 @@ export const TradingDashboard = () => {
                     <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-slate-400">
                       <div>
                         Stake
-                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.stake_amount)} STRK</div>
+                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.stake_amount)} WBTC</div>
                       </div>
                       <div>
                         Payout
-                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.expected_payout)} STRK</div>
+                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.expected_payout)} WBTC</div>
                       </div>
                       <div>
                         Net PnL
                         <div className={`mt-1 font-mono ${Number(position.net_pnl) > 0 ? 'text-emerald-300' : Number(position.net_pnl) < 0 ? 'text-rose-300' : 'text-white'}`}>
-                          {formatTokenAmount(position.net_pnl)} STRK
+                          {formatTokenAmount(position.net_pnl)} WBTC
                         </div>
                       </div>
                     </div>
