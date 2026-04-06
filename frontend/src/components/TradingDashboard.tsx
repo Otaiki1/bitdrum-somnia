@@ -16,7 +16,7 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
-import { API_BASE, WS_URL } from '../utils/somnia';
+import { API_BASE, WS_URL, SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
 
 // ─── Win / Lose Modal ───────────────────────────────────────────────────────
 
@@ -624,7 +624,7 @@ export const TradingDashboard = () => {
                     </div>
                     {position.transaction_hash ? (
                       <a
-                        href={`https://sepolia.voyager.online/tx/${position.transaction_hash}`}
+                        href={`${SOMNIA_EXPLORER_BASE_URL}/tx/${position.transaction_hash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 transition hover:text-white"
@@ -659,7 +659,7 @@ export const TradingDashboard = () => {
       <footer
         className={`mt-20 flex flex-col items-center justify-between gap-4 border-t border-white/5 py-8 opacity-30 grayscale transition-all duration-700 hover:opacity-100 hover:grayscale-0 md:flex-row ${showAccount ? 'blur-xl' : ''}`}
       >
-        <p className="text-xs font-bold tracking-widest">STARKNET PREDICTION PROTOCOL 2026</p>
+        <p className="text-xs font-bold tracking-widest">SOMNIA PREDICTION PROTOCOL 2026</p>
         <div className="flex gap-6 text-xs font-black uppercase">
           <span className="transition-colors hover:text-orange-500">Twitter</span>
           <span className="transition-colors hover:text-orange-500">Discord</span>
