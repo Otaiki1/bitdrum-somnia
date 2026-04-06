@@ -16,7 +16,7 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
-import { API_BASE } from '../utils/somnia';
+import { API_BASE, WS_URL } from '../utils/somnia';
 
 // ─── Win / Lose Modal ───────────────────────────────────────────────────────
 
@@ -181,6 +181,7 @@ export const TradingDashboard = () => {
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
   const [claimingMarketId, setClaimingMarketId] = useState<string | null>(null);
   const [currentBtcPrice, setCurrentBtcPrice] = useState<number | null>(null);
+  const [livePositionsPayload, setLivePositionsPayload] = useState<any | null>(null);
 
   // Trade execution records for chart markers
   const [pendingTrades, setPendingTrades] = useState<TradeExecutionRecord[]>([]);
@@ -199,11 +200,35 @@ export const TradingDashboard = () => {
       return response.json();
     },
     enabled: Boolean(viewerAddress),
-    refetchInterval: 12_000,
+    refetchInterval: 60_000,
   });
 
-  const positionSummary = positionsQuery.data?.summary;
-  const positions = positionsQuery.data?.positions ?? [];
+  useEffect(() => {
+    if (!viewerAddress) {
+      setLivePositionsPayload(null);
+      return;
+    }
+
+    const params = new URLSearchParams({
+      channel: 'positions',
+      address: viewerAddress,
+    });
+
+    const socket = new WebSocket(`${WS_URL}?${params.toString()}`);
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data?.payload?.positions) {
+        setLivePositionsPayload(data.payload);
+      }
+    };
+
+    socket.onerror = () => setLivePositionsPayload(null);
+
+    return () => socket.close();
+  }, [viewerAddress]);
+
+  const positionSummary = livePositionsPayload?.summary ?? positionsQuery.data?.summary;
+  const positions = livePositionsPayload?.positions ?? positionsQuery.data?.positions ?? [];
 
   // ── Show win/lose modal when a position resolves ───────────────────────────
   useEffect(() => {

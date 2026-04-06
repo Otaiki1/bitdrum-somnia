@@ -4,12 +4,15 @@ import dotenv from 'dotenv';
 import { createServer, type IncomingMessage } from 'http';
 import WebSocket, { Server as WebSocketServer } from 'ws';
 import router from './routes';
+import { publishInvalidation, subscribeToInvalidations } from './services/realtime';
+import { startSomniaReactivityBridge } from './services/reactivity';
 
 dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
-const WS_REFRESH_MS = Number(process.env.WS_REFRESH_MS || 3000);
+const WS_REFRESH_MS = Number(process.env.WS_REFRESH_MS || 60000);
+const WS_USE_POLLING_FALLBACK = process.env.WS_USE_POLLING_FALLBACK !== 'false';
 
 app.use(cors());
 app.use(express.json());
@@ -88,13 +91,32 @@ wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
   };
 
   void publish();
-  const interval = setInterval(() => {
+  const unsubscribe = subscribeToInvalidations(() => {
     void publish();
-  }, WS_REFRESH_MS);
+  });
 
-  socket.on('close', () => clearInterval(interval));
+  const interval = WS_USE_POLLING_FALLBACK
+    ? setInterval(() => {
+        publishInvalidation({
+          reason: 'polling-fallback',
+          occurredAt: new Date().toISOString(),
+        });
+      }, WS_REFRESH_MS)
+    : null;
+
+  socket.on('close', () => {
+    unsubscribe();
+    if (interval) {
+      clearInterval(interval);
+    }
+  });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`BitDrum Gateway running on http://localhost:${PORT}`);
+  publishInvalidation({
+    reason: 'startup',
+    occurredAt: new Date().toISOString(),
+  });
+  await startSomniaReactivityBridge();
 });

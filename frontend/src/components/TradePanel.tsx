@@ -63,7 +63,7 @@ export const TradePanel = ({
       return response.json();
     },
     enabled: Boolean(selectedMarket?.id),
-    refetchInterval: selectedMarket?.id ? 10_000 : false,
+    refetchInterval: selectedMarket?.id ? 30_000 : false,
   });
 
   const signalQuery = useQuery({
@@ -77,7 +77,7 @@ export const TradePanel = ({
       if (!response.ok) return null;
       return response.json();
     },
-    refetchInterval: selectedMarket?.id ? 20_000 : 15_000,
+    refetchInterval: selectedMarket?.id ? 30_000 : 30_000,
   });
 
   const pomQuery = useQuery({
@@ -90,7 +90,7 @@ export const TradePanel = ({
       if (!response.ok) return null;
       return response.json();
     },
-    refetchInterval: selectedMarket?.id ? 20_000 : 15_000,
+    refetchInterval: selectedMarket?.id ? 30_000 : 30_000,
   });
 
   const activeMarket = selectedMarket?.id

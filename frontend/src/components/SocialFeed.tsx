@@ -90,7 +90,7 @@ export const MarketFeed = ({
 
       return response.json();
     },
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
@@ -325,7 +325,7 @@ export const LeaderboardCard = () => {
 
       return response.json();
     },
-    refetchInterval: 20_000,
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
