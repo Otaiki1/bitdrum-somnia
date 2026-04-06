@@ -110,7 +110,30 @@ NEXT_PUBLIC_PRIVY_APP_ID=<your privy app id>
 
 ---
 
-## Phase 4 — Start Services (in order)
+## Phase 4 — Frontend Hook Verification
+
+The frontend data layer is now hook-based. All data fetching lives in
+`frontend/src/hooks/` — components never call `fetch()` directly.
+
+| Hook | Source | Used by |
+|------|--------|---------|
+| `useWebSocket(url)` | WS frame → parsed JSON | `usePositions`, `useFeed`, `useLeaderboard` |
+| `usePositions(address)` | WS-primary + REST fallback | `TradingDashboard` |
+| `useFeed(type, address)` | WS-primary + REST fallback | `MarketFeed` |
+| `useLeaderboard()` | WS-primary + REST fallback | `LeaderboardCard` |
+| `useMarketDetail(marketId, address?)` | viem multicall → gateway fallback | `TradePanel` |
+| `useSignal(marketId?, direction?, stake?)` | Gateway REST (precomputed) | `TradePanel` |
+| `usePom(marketId?, direction?, stake?)` | Gateway REST | `TradePanel` |
+
+- [ ] Run `cd frontend && npm install` to pull in the `viem` file-dependency
+- [ ] Start the frontend (`npm run dev`) and confirm no TypeScript errors in the hooks
+- [ ] Open browser devtools → Network tab: confirm no raw `fetch` calls from components
+- [ ] Open devtools → WS tab: verify a WebSocket connection opens for each active channel (positions, feed, leaderboard)
+- [ ] Stub gateway offline → feed/leaderboard/positions should show last WS data, not blank
+
+---
+
+## Phase 5 — Start Services (in order)
 
 ```bash
 # 1. AI Agent
@@ -125,7 +148,7 @@ cd backend/gateway && npm run build && npm start
 # 4. Keeper (automates lock + settle)
 cd backend/keeper && npm run build && npm start
 
-# 5. Frontend
+# 5. Frontend (install first to pick up viem file-dependency)
 cd frontend && npm install && npm run dev
 ```
 
@@ -138,7 +161,7 @@ cd frontend && npm install && npm run dev
 
 ---
 
-## Phase 5 — Smoke Test
+## Phase 6 — Smoke Test
 
 - [ ] Open frontend, connect wallet (MetaMask on Somnia Shannon)
 - [ ] Approve WBTC spend & open a market (UP or DOWN, 30s timeframe)
