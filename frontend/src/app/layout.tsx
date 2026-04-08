@@ -20,6 +20,11 @@ const monoFont = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "BitDrum | Make the Call. Beat the Market.",
   description: "A premium Somnia-native Bitcoin prediction protocol powered by The Core.",
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 import { Providers } from "@/components/Providers";

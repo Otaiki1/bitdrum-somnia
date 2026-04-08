@@ -1,15 +1,21 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/utils/cn';
 
 export function BrandMark({ compact = false, className }: { compact?: boolean; className?: string }) {
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-[color:var(--border-strong)] bg-[radial-gradient(circle_at_30%_30%,rgba(245,185,66,0.32),transparent_45%),linear-gradient(145deg,#0f0f0f,#050505)] shadow-[0_18px_46px_rgba(0,0,0,0.45)]">
-        <div className="absolute inset-[7px] rounded-xl border border-[rgba(245,185,66,0.24)]" />
-        <div className="absolute inset-[13px] rounded-lg border border-[rgba(59,130,246,0.3)]" />
-        <div className="h-2.5 w-2.5 rounded-full bg-[var(--accent-gold)] shadow-[0_0_18px_rgba(245,185,66,0.65)]" />
+      <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-[1.2rem] border border-[color:var(--border-strong)] bg-[radial-gradient(circle_at_30%_30%,rgba(245,185,66,0.12),transparent_45%),linear-gradient(145deg,#0f0f0f,#050505)] shadow-[0_18px_46px_rgba(0,0,0,0.45)]">
+        <Image
+          src="/logo.png"
+          alt="BitDrum logo"
+          fill
+          sizes="56px"
+          className="object-cover"
+          priority
+        />
       </div>
       {!compact ? (
         <div className="min-w-0">
