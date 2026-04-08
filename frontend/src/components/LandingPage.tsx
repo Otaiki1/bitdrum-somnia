@@ -32,8 +32,8 @@ export function LandingPage() {
               AI-powered Bitcoin predictions. Stake on direction. Win on conviction.
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
-              <AppLink href="#app">Enter App</AppLink>
-              <AppLink href="#live-markets" variant="secondary">
+              <AppLink href="/arena">Enter App</AppLink>
+              <AppLink href="/arena" variant="secondary">
                 View Live Markets
               </AppLink>
             </div>
@@ -204,7 +204,7 @@ export function LandingPage() {
               Ready to make your call?
             </h3>
           </div>
-          <AppLink href="#app" className="group">
+          <AppLink href="/arena" className="group">
             Enter Trading Arena
             <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
           </AppLink>
