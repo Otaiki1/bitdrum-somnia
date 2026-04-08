@@ -1,12 +1,24 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, LogOut, Menu, Wallet, ExternalLink, TrendingUp, TrendingDown, Trophy, X } from 'lucide-react';
+import {
+  Bell,
+  ChevronRight,
+  ExternalLink,
+  LogOut,
+  Shield,
+  Sparkles,
+  Trophy,
+  Wallet,
+  Waves,
+  X,
+} from 'lucide-react';
 import { PriceChart, type TradeMarker } from './PriceChart';
 import { TradePanel } from './TradePanel';
 import { LeaderboardCard, MarketFeed } from './SocialFeed';
 import { useBitdrumWallet } from './BitdrumWalletProvider';
+import { BrandMark, Eyebrow, Panel, StatPill } from './ObsidianPrimitives';
 import {
   claimMarket,
   formatTimeframe,
@@ -19,7 +31,49 @@ import {
 import { SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
 import { usePositions } from '../hooks/usePositions';
 
-// ─── Win / Lose Modal ───────────────────────────────────────────────────────
+function CountdownTimer({ settlementDeadline }: { settlementDeadline: number | null }) {
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!settlementDeadline) return;
+
+    const tick = () => {
+      const now = Math.floor(Date.now() / 1000);
+      setRemaining(Math.max(0, settlementDeadline - now));
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [settlementDeadline]);
+
+  if (remaining === null) return null;
+
+  if (remaining <= 0) {
+    return (
+      <span className="rounded-full border border-[rgba(220,38,38,0.2)] bg-[rgba(220,38,38,0.1)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--state-down)]">
+        Settling
+      </span>
+    );
+  }
+
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  const label = mins > 0 ? `${mins}m ${secs.toString().padStart(2, '0')}s` : `${secs}s`;
+  const urgent = remaining <= 10;
+
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] ${
+        urgent
+          ? 'border-[rgba(220,38,38,0.2)] bg-[rgba(220,38,38,0.1)] text-[var(--state-down)] animate-pulse'
+          : 'border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)] text-[var(--accent-gold)]'
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
 
 function OutcomeModal({
   outcome,
@@ -34,135 +88,71 @@ function OutcomeModal({
   const isDraw = outcome === 'DRAW';
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-lg">
-      {/* Animated glow background */}
-      <div
-        className={`absolute inset-0 pointer-events-none ${
-          isWin
-            ? 'bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.15)_0%,transparent_70%)]'
-            : isDraw
-              ? 'bg-[radial-gradient(ellipse_at_center,rgba(249,115,22,0.12)_0%,transparent_70%)]'
-              : 'bg-[radial-gradient(ellipse_at_center,rgba(244,63,94,0.15)_0%,transparent_70%)]'
-        }`}
-      />
-
-      <div
-        className={`relative w-full max-w-sm overflow-hidden rounded-3xl border p-8 shadow-2xl ${
-          isWin
-            ? 'border-emerald-500/30 bg-[#0a120e]'
-            : isDraw
-              ? 'border-orange-500/20 bg-[#12100a]'
-              : 'border-rose-500/30 bg-[#120a0a]'
-        }`}
-      >
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-black/75 p-4 backdrop-blur-md">
+      <Panel className={`relative w-full max-w-md p-7 ${isWin ? 'panel-gold' : isDraw ? 'panel-core' : 'panel-surface'}`}>
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 transition hover:text-white"
+          className="absolute right-5 top-5 rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-2 text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
         >
           <X className="h-4 w-4" />
         </button>
 
-        {/* Icon */}
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <div
-            className={`flex h-20 w-20 items-center justify-center rounded-full border-2 ${
-              isWin
-                ? 'border-emerald-500/40 bg-emerald-500/10'
-                : isDraw
-                  ? 'border-orange-500/30 bg-orange-500/10'
-                  : 'border-rose-500/40 bg-rose-500/10'
-            }`}
-          >
-            {isWin ? (
-              <Trophy className="h-10 w-10 text-emerald-400" />
-            ) : isDraw ? (
-              <span className="text-3xl">🤝</span>
-            ) : (
-              <span className="text-3xl">💸</span>
-            )}
-          </div>
+        <Eyebrow accent={isWin ? 'gold' : isDraw ? 'core' : 'danger'}>
+          {isWin ? 'You Called It Right' : isDraw ? 'Round Refunded' : 'Market Moved Against You'}
+        </Eyebrow>
 
-          <div className="text-center">
-            <h2
-              className={`text-3xl font-black uppercase italic tracking-tight ${
-                isWin ? 'text-emerald-300' : isDraw ? 'text-orange-300' : 'text-rose-300'
-              }`}
-            >
-              {isWin ? 'You Won!' : isDraw ? 'Draw' : 'You Lost'}
-            </h2>
-            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.32em] text-slate-500">
-              Market #{position.market_id} · {position.direction.toUpperCase()}
-            </p>
-          </div>
-        </div>
+        <h2 className="mt-4 font-heading text-4xl font-semibold tracking-[-0.06em] text-[var(--text-primary)]">
+          Market #{position.market_id}
+        </h2>
+        <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
+          {isWin
+            ? 'Your call landed on the right side of the close. The protocol settled in your favor.'
+            : isDraw
+              ? 'The market settled flat. Your stake returns unchanged.'
+              : 'The direction moved against your position before settlement.'}
+        </p>
 
-        {/* Stats */}
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
-            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-slate-500">Stake</p>
-            <p className="mt-1 font-mono text-sm font-bold text-white">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[1.45rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-4">
+            <div className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">Stake</div>
+            <div className="mt-3 font-mono text-2xl text-[var(--text-primary)]">
               {formatTokenAmount(position.stake_amount)} STT
-            </p>
-          </div>
-          <div
-            className={`rounded-2xl border p-3 text-center ${
-              isWin
-                ? 'border-emerald-500/20 bg-emerald-500/10'
-                : isDraw
-                  ? 'border-orange-500/20 bg-orange-500/10'
-                  : 'border-rose-500/20 bg-rose-500/10'
-            }`}
-          >
-            <p className="text-[9px] font-black uppercase tracking-[0.28em] text-slate-500">PnL</p>
-            <p
-              className={`mt-1 font-mono text-sm font-bold ${
-                isWin ? 'text-emerald-300' : isDraw ? 'text-orange-300' : 'text-rose-300'
-              }`}
-            >
-              {isWin || isDraw ? '+' : ''}
-              {formatTokenAmount(position.net_pnl)} STT
-            </p>
-          </div>
-        </div>
-
-        {/* Entry / settlement prices */}
-        {(position.entry_price || position.settlement_price) ? (
-          <div className="mb-6 rounded-2xl border border-white/10 bg-black/20 p-3">
-            <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
-              <div>
-                Entry
-                <div className="mt-0.5 font-mono text-white">
-                  ${formatOraclePrice(position.entry_price)?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '--'}
-                </div>
-              </div>
-              <div>
-                Settlement
-                <div className="mt-0.5 font-mono text-white">
-                  ${formatOraclePrice(position.settlement_price)?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '--'}
-                </div>
-              </div>
             </div>
           </div>
-        ) : null}
+          <div className="rounded-[1.45rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-4">
+            <div className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">PnL</div>
+            <div className={`mt-3 font-mono text-2xl ${isWin ? 'text-[var(--state-up)]' : isDraw ? 'text-[var(--accent-core)]' : 'text-[var(--state-down)]'}`}>
+              {isWin || isDraw ? '+' : ''}
+              {formatTokenAmount(position.net_pnl)} STT
+            </div>
+          </div>
+        </div>
 
-        <button
-          onClick={onClose}
-          className={`w-full rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.2em] transition ${
-            isWin
-              ? 'bg-emerald-500 text-white hover:bg-emerald-400'
-              : isDraw
-                ? 'bg-orange-500 text-white hover:bg-orange-400'
-                : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
-          }`}
-        >
-          {isWin ? 'Collect Winnings' : isDraw ? 'Close' : 'Trade Again'}
-        </button>
-      </div>
+        {(position.entry_price || position.settlement_price) ? (
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <StatPill
+              label="Entry"
+              value={
+                formatOraclePrice(position.entry_price)
+                  ? `$${formatOraclePrice(position.entry_price)!.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '--'
+              }
+            />
+            <StatPill
+              label="Settlement"
+              value={
+                formatOraclePrice(position.settlement_price)
+                  ? `$${formatOraclePrice(position.settlement_price)!.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '--'
+              }
+              accent={isWin ? 'success' : isDraw ? 'core' : 'danger'}
+            />
+          </div>
+        ) : null}
+      </Panel>
     </div>
   );
 }
-
-// ─── Main Dashboard ──────────────────────────────────────────────────────────
 
 export const TradingDashboard = () => {
   const queryClient = useQueryClient();
@@ -182,19 +172,13 @@ export const TradingDashboard = () => {
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
   const [claimingMarketId, setClaimingMarketId] = useState<string | null>(null);
   const [currentBtcPrice, setCurrentBtcPrice] = useState<number | null>(null);
-
-  // Trade execution records for chart markers
   const [pendingTrades, setPendingTrades] = useState<TradeExecutionRecord[]>([]);
-
-  // Outcome modal
   const [outcomeModal, setOutcomeModal] = useState<{ outcome: 'WIN' | 'LOSS' | 'DRAW'; position: any } | null>(null);
   const seenOutcomes = useRef<Set<string>>(new Set());
 
   const viewerAddress = address ?? '';
-
   const { positions, summary: positionSummary, isLoading: positionsLoading } = usePositions(viewerAddress || null);
 
-  // ── Show win/lose modal when a position resolves ───────────────────────────
   useEffect(() => {
     for (const pos of positions) {
       const key = `${pos.market_id}-${pos.direction}`;
@@ -202,45 +186,37 @@ export const TradingDashboard = () => {
       if (pos.status === 'WIN' || pos.status === 'LOSS' || pos.status === 'DRAW') {
         seenOutcomes.current.add(key);
         setOutcomeModal({ outcome: pos.status as 'WIN' | 'LOSS' | 'DRAW', position: pos });
-        break; // show one at a time
+        break;
       }
     }
   }, [positions]);
 
-  const livePnL = useMemo(
-    () => formatTokenAmount(positionSummary?.resolved_pnl || '0'),
-    [positionSummary?.resolved_pnl],
-  );
+  const livePnL = useMemo(() => formatTokenAmount(positionSummary?.resolved_pnl || '0'), [positionSummary?.resolved_pnl]);
 
-  // ── Trade markers for PriceChart ──────────────────────────────────────────
   const tradeMarkers = useMemo<TradeMarker[]>(() => {
     const markers: TradeMarker[] = [];
 
-    // From pending/confirmed local trades
-    for (const t of pendingTrades) {
-      if (t.status === 'failed') continue;
-      if (!t.entryPrice) continue;
-
+    for (const trade of pendingTrades) {
+      if (trade.status === 'failed' || !trade.entryPrice) continue;
       markers.push({
-        time: Math.floor(new Date(t.submittedAt).getTime() / 1000),
-        price: t.entryPrice,
-        direction: t.direction,
-        label: `${t.direction} ${t.stake} STT`,
+        time: Math.floor(new Date(trade.submittedAt).getTime() / 1000),
+        price: trade.entryPrice,
+        direction: trade.direction,
+        label: `${trade.direction} ${trade.stake} STT`,
       });
     }
 
-    // From settled positions with a known entry price
-    for (const pos of positions) {
-      if (!pos.entry_price) continue;
-      const key = `${pos.market_id}-${pos.direction}`;
-      if (markers.some((m) => m.label.includes(key))) continue;
-      const entryPrice = formatOraclePrice(pos.entry_price);
+    for (const position of positions) {
+      if (!position.entry_price) continue;
+      const key = `${position.market_id}-${position.direction}`;
+      if (markers.some((marker) => marker.label.includes(key))) continue;
+      const entryPrice = formatOraclePrice(position.entry_price);
       if (!entryPrice) continue;
       markers.push({
-        time: pos.opened_at ? Math.floor(new Date(pos.opened_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        time: position.opened_at ? Math.floor(new Date(position.opened_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
         price: entryPrice,
-        direction: pos.direction.toUpperCase() === 'LONG' || pos.direction.toUpperCase() === 'UP' ? 'UP' : 'DOWN',
-        label: `${pos.direction} #${pos.market_id}`,
+        direction: position.direction.toUpperCase() === 'LONG' || position.direction.toUpperCase() === 'UP' ? 'UP' : 'DOWN',
+        label: `${position.direction} #${position.market_id}`,
       });
     }
 
@@ -248,20 +224,28 @@ export const TradingDashboard = () => {
   }, [pendingTrades, positions]);
 
   const handleTradeSubmitted = (record: TradeExecutionRecord) => {
-    setPendingTrades((prev) => {
-      const existing = prev.findIndex((t) => t.txHash === record.txHash);
+    setPendingTrades((previous) => {
+      const existing = previous.findIndex((trade) => trade.txHash === record.txHash);
       if (existing >= 0) {
-        const updated = [...prev];
+        const updated = [...previous];
         updated[existing] = record;
         return updated.slice(0, 8);
       }
-      return [record, ...prev].slice(0, 8);
+      return [record, ...previous].slice(0, 8);
     });
   };
 
   const handleAuth = async () => {
-    if (authenticated) { setShowAccount(true); return; }
-    try { await connect(); setShowAccount(true); } catch { /* surfaced by provider */ }
+    if (authenticated) {
+      setShowAccount(true);
+      return;
+    }
+    try {
+      await connect();
+      setShowAccount(true);
+    } catch {
+      // provider handles error
+    }
   };
 
   const handleDisconnect = async () => {
@@ -288,9 +272,7 @@ export const TradingDashboard = () => {
   const identityLabel = username || shortWallet || 'Wallet';
 
   return (
-    <div className="relative min-h-screen bg-[#0a0a0a] p-4 text-white selection:bg-orange-500 selection:text-white md:p-8">
-
-      {/* Win / Lose Modal */}
+    <div id="live-markets" className="relative mx-auto max-w-[1520px] px-4 py-8 sm:px-6 lg:px-8">
       {outcomeModal ? (
         <OutcomeModal
           outcome={outcomeModal.outcome}
@@ -299,312 +281,344 @@ export const TradingDashboard = () => {
         />
       ) : null}
 
-      {/* Account Modal */}
       {showAccount ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
-          <div className="glass-morphism relative w-full max-w-2xl overflow-hidden border border-white/10 p-8 shadow-2xl">
-            <div className="absolute right-0 top-0 -z-10 h-40 w-40 bg-orange-500/10 blur-3xl" />
-            <div className="mb-8 flex items-start justify-between">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+          <Panel className="w-full max-w-2xl p-7">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-3xl font-black uppercase italic tracking-tight text-white">
-                  Somnia Wallet Session
+                <Eyebrow accent="gold">Wallet Session</Eyebrow>
+                <h2 className="mt-3 font-heading text-4xl font-semibold tracking-[-0.05em] text-[var(--text-primary)]">
+                  Somnia execution profile
                 </h2>
-                <p className="mt-2 text-[10px] font-black uppercase tracking-[0.32em] text-slate-500">
-                  Wallet Access
-                </p>
               </div>
               <button
                 onClick={() => setShowAccount(false)}
-                className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-300 transition hover:border-white/20"
+                className="rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-2 text-[var(--text-secondary)]"
               >
-                <LogOut className="h-5 w-5 rotate-180" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-              <div className="space-y-5">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-orange-300">Wallet Label</p>
-                  <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-slate-200">
-                    {username || 'Injected Wallet'}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Execution Wallet</p>
-                  <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-3 font-mono text-xs text-white">
-                    {viewerAddress || 'DISCONNECTED'}
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-5">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Session Mode</p>
-                  <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                    Connect an injected EVM wallet on Somnia Shannon or mainnet to manage approvals and trades.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  <button
-                    onClick={() => void openProfile()}
-                    className="rounded-xl bg-orange-500 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-black transition hover:bg-orange-400"
-                  >
-                    Open Explorer Profile
-                  </button>
-                  <button
-                    onClick={() => void handleDisconnect()}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 transition hover:border-rose-500/40 hover:text-rose-200"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              </div>
+            <div className="mt-8 grid gap-4 lg:grid-cols-2">
+              <Panel className="p-5">
+                <Eyebrow accent="neutral">Label</Eyebrow>
+                <p className="mt-4 font-heading text-2xl tracking-[-0.04em] text-[var(--text-primary)]">
+                  {username || 'Injected Wallet'}
+                </p>
+                <p className="mt-4 font-mono text-sm text-[var(--text-secondary)]">{viewerAddress || 'Disconnected'}</p>
+              </Panel>
+              <Panel className="p-5">
+                <Eyebrow accent="core">Mode</Eyebrow>
+                <p className="mt-4 text-sm leading-7 text-[var(--text-secondary)]">
+                  Connect an injected EVM wallet on Somnia Shannon or mainnet to manage approvals, positions, and claims.
+                </p>
+              </Panel>
             </div>
-          </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                onClick={() => void openProfile()}
+                className="cta-press rounded-full bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-5 py-3 text-sm text-[#140c00]"
+              >
+                Open Explorer Profile
+              </button>
+              <button
+                onClick={() => void handleDisconnect()}
+                className="rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-5 py-3 text-sm text-[var(--text-primary)]"
+              >
+                Disconnect
+              </button>
+            </div>
+          </Panel>
         </div>
       ) : null}
 
-      {/* Nav */}
-      <nav className="mb-10 flex items-center justify-between px-2">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient shadow-lg shadow-orange-500/20">
-            <span className="text-2xl font-black italic text-white">BD</span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-black uppercase italic tracking-tight">BitDrum</h1>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Intelligence Protocol</p>
-          </div>
-        </div>
+      <div className={`grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_420px] ${showAccount ? 'blur-sm opacity-35' : ''}`}>
+        <aside className="xl:sticky xl:top-6 xl:h-fit">
+          <Panel className="surface-lift p-5 sm:p-6">
+            <BrandMark />
 
-        <div className="hidden flex-1 items-center gap-8 px-10 md:flex">
-          <button className="border-b-2 border-orange-500 pb-1 text-xs font-black uppercase italic tracking-tight text-orange-300">
-            Trading
-          </button>
-          <button
-            onClick={() => authenticated && setShowAccount(true)}
-            className="border-b-2 border-transparent pb-1 text-xs font-black uppercase italic tracking-tight text-slate-500 transition hover:border-white/20 hover:text-white"
-          >
-            Wallet
-          </button>
-          <button className="border-b-2 border-transparent pb-1 text-xs font-black uppercase italic tracking-tight text-slate-500 transition hover:border-white/20 hover:text-white">
-            Leaderboard
-          </button>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button className="relative rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10">
-            <Bell className="h-5 w-5 text-slate-400" />
-            <div className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500" />
-          </button>
-
-          {authenticated ? (
-            <button
-              onClick={() => setShowAccount(true)}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 transition hover:border-orange-500/40 hover:bg-orange-500/10"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-gradient text-xs font-bold text-white">
-                {viewerAddress ? viewerAddress.slice(2, 4).toUpperCase() : 'BD'}
-              </div>
-              <span className="text-sm font-bold tracking-tight text-slate-200">{identityLabel}</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => void handleAuth()}
-              disabled={connecting}
-              className="flex items-center gap-3 rounded-2xl border border-orange-500/40 bg-orange-500/10 px-6 py-3 text-sm font-black uppercase italic tracking-tight text-orange-200 transition hover:bg-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Wallet className="h-5 w-5" />
-              {connecting ? 'Connecting...' : 'Connect Wallet'}
-            </button>
-          )}
-
-          <button className="rounded-xl border border-white/10 bg-white/5 p-3 transition hover:bg-white/10 md:hidden">
-            <Menu className="h-5 w-5" />
-          </button>
-        </div>
-      </nav>
-
-      {walletError ? (
-        <div className="mb-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-200">
-          {walletError}
-        </div>
-      ) : null}
-
-      {/* Pending trades banner */}
-      {pendingTrades.length > 0 ? (
-        <div className="mb-6 flex flex-col gap-2">
-          {pendingTrades.slice(0, 3).map((t) => (
-            <div
-              key={t.id}
-              className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-xs transition ${
-                t.status === 'confirmed'
-                  ? 'border-emerald-500/20 bg-emerald-500/10'
-                  : t.status === 'failed'
-                    ? 'border-rose-500/20 bg-rose-500/10'
-                    : 'border-orange-500/20 bg-orange-500/10'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                {t.direction === 'UP' ? (
-                  <TrendingUp className="h-4 w-4 text-emerald-400" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-rose-400" />
-                )}
-                <span className="font-black uppercase tracking-widest text-white">
-                  {t.direction} · {t.stake} STT
-                </span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${
-                    t.status === 'confirmed'
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : t.status === 'failed'
-                        ? 'bg-rose-500/20 text-rose-300'
-                        : 'bg-orange-500/20 text-orange-300'
+            <div className="mt-10 space-y-3">
+              {[
+                { label: 'Arena', value: 'Live' },
+                { label: 'The Core', value: 'Signal' },
+                { label: 'Leaderboard', value: 'Top traders' },
+              ].map((item, index) => (
+                <button
+                  key={item.label}
+                  className={`flex w-full items-center justify-between rounded-[1.35rem] border px-4 py-3 text-left transition ${
+                    index === 0
+                      ? 'border-[rgba(245,185,66,0.2)] bg-[rgba(245,185,66,0.08)] text-[var(--text-primary)]'
+                      : 'border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  {t.status}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {t.explorerUrl ? (
-                  <a
-                    href={t.explorerUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
-                  >
-                    Explorer <ExternalLink className="h-2.5 w-2.5" />
-                  </a>
-                ) : null}
-                <button
-                  onClick={() => setPendingTrades((p) => p.filter((x) => x.id !== t.id))}
-                  className="rounded-full p-1 text-slate-500 transition hover:text-white"
-                >
-                  <X className="h-3 w-3" />
+                  <span>
+                    <span className="block text-sm">{item.label}</span>
+                    <span className="mt-1 block text-[0.66rem] uppercase tracking-[0.24em]">{item.value}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4" />
                 </button>
+              ))}
+            </div>
+
+            <Panel className="mt-8 p-5">
+              <Eyebrow accent="gold">Session</Eyebrow>
+              <div className="mt-4 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[color:var(--border-subtle)] bg-[#0c0c0c] text-[var(--accent-gold)]">
+                  <Wallet className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-heading text-xl tracking-[-0.04em] text-[var(--text-primary)]">{identityLabel}</p>
+                  <p className="text-[0.68rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                    {authenticated ? 'Connected' : 'Ready to connect'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {authenticated ? (
+                  <>
+                    <button
+                      onClick={() => setShowAccount(true)}
+                      className="rounded-full border border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)] px-4 py-2 text-[0.7rem] uppercase tracking-[0.24em] text-[var(--accent-gold)]"
+                    >
+                      Open Session
+                    </button>
+                    <button
+                      onClick={() => void handleDisconnect()}
+                      className="rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-2 text-[0.7rem] uppercase tracking-[0.24em] text-[var(--text-secondary)]"
+                    >
+                      Disconnect
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => void handleAuth()}
+                    disabled={connecting}
+                    className="cta-press rounded-full bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-4 py-2 text-[0.72rem] uppercase tracking-[0.24em] text-[#140c00] disabled:opacity-60"
+                  >
+                    {connecting ? 'Connecting...' : 'Connect Wallet'}
+                  </button>
+                )}
+              </div>
+            </Panel>
+
+            <div className="mt-8 grid gap-3">
+              <StatPill label="Win Rate" value={`${((positionSummary?.win_rate || 0) * 100).toFixed(1)}%`} accent="gold" />
+              <StatPill label="Resolved PnL" value={`${livePnL} STT`} accent={Number(positionSummary?.resolved_pnl || 0) >= 0 ? 'success' : 'danger'} />
+              <StatPill label="Live BTC" value={currentBtcPrice ? `$${currentBtcPrice.toFixed(2)}` : '--'} accent="core" />
+            </div>
+          </Panel>
+        </aside>
+
+        <section className="flex min-w-0 flex-col gap-6">
+          <Panel className="surface-lift overflow-hidden p-5 sm:p-6">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <Eyebrow accent="gold">Trading Arena</Eyebrow>
+                <h1 className="mt-3 font-heading text-[clamp(2.4rem,4vw,4.8rem)] font-semibold leading-[0.92] tracking-[-0.07em] text-[var(--text-primary)]">
+                  Precision decisions, made at market speed.
+                </h1>
+                <p className="mt-5 max-w-2xl text-[1rem] leading-8 text-[var(--text-secondary)]">
+                  BitDrum turns each round into a clear decision surface: live price action, The Core’s conviction, and your position board in one arena.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <StatPill label="Chain" value="Somnia Shannon" accent="core" />
+                <StatPill label="Markets" value="30s / 1m / 5m" accent="neutral" />
+                <StatPill label="Execution" value="STT" accent="gold" />
               </div>
             </div>
-          ))}
-        </div>
-      ) : null}
 
-      <main
-        className={`grid grid-cols-1 gap-6 transition-all lg:grid-cols-12 ${showAccount ? 'blur-xl opacity-20' : 'opacity-100'}`}
-      >
-        <div className="flex flex-col gap-6 lg:col-span-8">
+            {pendingTrades.length > 0 ? (
+              <div className="mt-6 grid gap-3 lg:grid-cols-3">
+                {pendingTrades.slice(0, 3).map((trade) => (
+                  <div
+                    key={trade.id}
+                    className={`rounded-[1.4rem] border px-4 py-4 ${
+                      trade.status === 'confirmed'
+                        ? 'border-[rgba(22,163,74,0.2)] bg-[rgba(22,163,74,0.08)]'
+                        : trade.status === 'failed'
+                          ? 'border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)]'
+                          : 'border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">Pending flow</p>
+                        <p className="mt-2 font-heading text-xl tracking-[-0.04em] text-[var(--text-primary)]">
+                          {trade.direction} · {trade.stake} STT
+                        </p>
+                      </div>
+                      <span className="text-[0.66rem] uppercase tracking-[0.24em] text-[var(--text-primary)]">
+                        {trade.status}
+                      </span>
+                    </div>
+                    {trade.explorerUrl ? (
+                      <a
+                        href={trade.explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+                      >
+                        Explorer
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </Panel>
+
+          {walletError ? (
+            <div className="rounded-[1.55rem] border border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)] px-5 py-4 text-sm text-[var(--text-primary)]">
+              {walletError}
+            </div>
+          ) : null}
+
           <PriceChart
             tradeMarkers={tradeMarkers}
             recentExecutions={pendingTrades}
             onPriceUpdate={setCurrentBtcPrice}
           />
 
-          {/* Active Positions */}
-          <div className="glass-morphism">
-            <div className="mb-4 flex items-start justify-between gap-3">
+          <Panel className="surface-lift p-5 sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <h3 className="text-lg font-bold uppercase tracking-tight text-white">Active Predictions</h3>
-                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Live Portfolio</p>
+                <Eyebrow accent="gold">Active Positions</Eyebrow>
+                <h3 className="mt-3 font-heading text-[1.8rem] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+                  Open calls and settled outcomes
+                </h3>
               </div>
-              <div className="flex gap-2">
-                <span className="rounded-full border border-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-slate-300">
-                  Win Rate {((positionSummary?.win_rate || 0) * 100).toFixed(1)}%
-                </span>
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">
-                  PnL {livePnL} STT
-                </span>
+              <div className="flex flex-wrap gap-2">
+                <StatPill label="Resolved PnL" value={`${livePnL} STT`} accent={Number(positionSummary?.resolved_pnl || 0) >= 0 ? 'success' : 'danger'} />
+                <StatPill label="Win Rate" value={`${((positionSummary?.win_rate || 0) * 100).toFixed(1)}%`} accent="gold" />
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="mt-6 flex flex-col gap-3">
               {positionsLoading && !positions.length ? (
-                <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
+                <div className="rounded-[1.55rem] border border-dashed border-[color:var(--border-subtle)] px-4 py-12 text-center text-[0.68rem] uppercase tracking-[0.34em] text-[var(--text-muted)]">
                   Reading positions
                 </div>
               ) : positions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs uppercase tracking-[0.3em] text-slate-500">
+                <div className="rounded-[1.55rem] border border-dashed border-[color:var(--border-subtle)] px-4 py-12 text-center text-[0.68rem] uppercase tracking-[0.34em] text-[var(--text-muted)]">
                   {authenticated ? 'No active stakes yet' : 'Connect wallet to load positions'}
                 </div>
               ) : (
-                positions.map((position: any) => (
-                  <article
-                    key={`${position.market_id}-${position.direction}`}
-                    className={`rounded-2xl border p-4 transition ${
-                      position.status === 'WIN'
-                        ? 'border-emerald-500/20 bg-emerald-500/5'
-                        : position.status === 'LOSS'
-                          ? 'border-rose-500/20 bg-rose-500/5'
-                          : 'border-white/10 bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">
-                          Market #{position.market_id} · {position.direction.toUpperCase()}
-                        </p>
-                        <p className="mt-1 text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">
-                          {position.status}
-                        </p>
-                        {position.duration_seconds ? (
-                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.24em] text-orange-300">
-                            {formatTimeframe(position.duration_seconds)}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex gap-2">
-                        {(position.status === 'WIN' || position.status === 'LOSS' || position.status === 'DRAW') ? (
-                          <button
-                            onClick={() => setOutcomeModal({ outcome: position.status, position })}
-                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-300 transition hover:text-white"
-                          >
-                            Details
-                          </button>
-                        ) : null}
-                        {position.can_claim ? (
-                          <button
-                            onClick={() => handleClaim(position.market_id)}
-                            disabled={claimingMarketId === position.market_id}
-                            className="rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {claimingMarketId === position.market_id ? 'Claiming' : 'Claim'}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
+                positions.map((position: any) => {
+                  const status =
+                    position.status === 'WIN'
+                      ? 'border-[rgba(245,185,66,0.22)] bg-[rgba(245,185,66,0.08)]'
+                      : position.status === 'LOSS'
+                        ? 'border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)]'
+                        : position.status === 'DRAW'
+                          ? 'border-[rgba(59,130,246,0.18)] bg-[rgba(59,130,246,0.08)]'
+                          : 'border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)]';
 
-                    <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-slate-400">
-                      <div>
-                        Stake
-                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.stake_amount)} STT</div>
-                      </div>
-                      <div>
-                        Payout
-                        <div className="mt-1 font-mono text-white">{formatTokenAmount(position.expected_payout)} STT</div>
-                      </div>
-                      <div>
-                        Net PnL
-                        <div className={`mt-1 font-mono ${Number(position.net_pnl) > 0 ? 'text-emerald-300' : Number(position.net_pnl) < 0 ? 'text-rose-300' : 'text-white'}`}>
-                          {formatTokenAmount(position.net_pnl)} STT
+                  return (
+                    <article
+                      key={`${position.market_id}-${position.direction}`}
+                      className={`rounded-[1.75rem] border px-5 py-5 ${status}`}
+                    >
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <h4 className="font-heading text-[1.45rem] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+                              Market #{position.market_id} · {position.direction.toUpperCase()}
+                            </h4>
+                            {(position.status === 'OPEN' || position.status === 'PENDING') ? (
+                              <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(59,130,246,0.18)] bg-[rgba(59,130,246,0.08)] px-3 py-1 text-[0.66rem] uppercase tracking-[0.24em] text-[var(--accent-core)]">
+                                <Waves className="h-3.5 w-3.5" />
+                                Live
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <StatPill label="Status" value={position.status} accent={position.status === 'WIN' ? 'gold' : position.status === 'LOSS' ? 'danger' : position.status === 'DRAW' ? 'core' : 'neutral'} />
+                            {position.duration_seconds ? <StatPill label="Round" value={formatTimeframe(position.duration_seconds)} accent="neutral" /> : null}
+                            {position.settlement_deadline ? <CountdownTimer settlementDeadline={position.settlement_deadline} /> : null}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {(position.status === 'WIN' || position.status === 'LOSS' || position.status === 'DRAW') ? (
+                            <button
+                              onClick={() => setOutcomeModal({ outcome: position.status, position })}
+                              className="rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-2 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--text-primary)]"
+                            >
+                              View Outcome
+                            </button>
+                          ) : null}
+                          {position.can_claim ? (
+                            <button
+                              onClick={() => handleClaim(position.market_id)}
+                              disabled={claimingMarketId === position.market_id}
+                              className="cta-press rounded-full bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-4 py-2 text-[0.72rem] uppercase tracking-[0.24em] text-[#140c00] disabled:opacity-60"
+                            >
+                              {claimingMarketId === position.market_id ? 'Claiming...' : 'Claim Payout'}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
-                    </div>
-                    {position.transaction_hash ? (
-                      <a
-                        href={`${SOMNIA_EXPLORER_BASE_URL}/tx/${position.transaction_hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 transition hover:text-white"
-                      >
-                        View Transaction
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : null}
-                  </article>
-                ))
+
+                      <div className="mt-6 grid gap-3 sm:grid-cols-4">
+                        <div className="rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[rgba(0,0,0,0.18)] p-4">
+                          <div className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">Stake</div>
+                          <div className="mt-3 font-mono text-2xl text-[var(--text-primary)]">
+                            {formatTokenAmount(position.stake_amount)} STT
+                          </div>
+                        </div>
+                        <div className="rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[rgba(0,0,0,0.18)] p-4">
+                          <div className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">Expected</div>
+                          <div className="mt-3 font-mono text-2xl text-[var(--text-primary)]">
+                            {formatTokenAmount(position.expected_payout)} STT
+                          </div>
+                        </div>
+                        <div className="rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[rgba(0,0,0,0.18)] p-4">
+                          <div className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">Entry</div>
+                          <div className="mt-3 font-mono text-xl text-[var(--text-primary)]">
+                            {formatOraclePrice(position.entry_price)
+                              ? `$${formatOraclePrice(position.entry_price)!.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : '--'}
+                          </div>
+                        </div>
+                        <div className="rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[rgba(0,0,0,0.18)] p-4">
+                          <div className="text-[0.66rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">Net PnL</div>
+                          <div
+                            className={`mt-3 font-mono text-2xl ${
+                              Number(position.net_pnl) > 0
+                                ? 'text-[var(--state-up)]'
+                                : Number(position.net_pnl) < 0
+                                  ? 'text-[var(--state-down)]'
+                                  : 'text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {formatTokenAmount(position.net_pnl)} STT
+                          </div>
+                        </div>
+                      </div>
+
+                      {position.transaction_hash ? (
+                        <a
+                          href={`${SOMNIA_EXPLORER_BASE_URL}/tx/${position.transaction_hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-5 inline-flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+                        >
+                          View transaction
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
+                    </article>
+                  );
+                })
               )}
             </div>
-          </div>
-        </div>
+          </Panel>
+        </section>
 
-        <div className="flex flex-col gap-6 lg:col-span-4">
+        <aside className="flex min-w-0 flex-col gap-6">
           <TradePanel
             selectedMarket={selectedMarket}
             onClearSelection={() => setSelectedMarket(null)}
@@ -617,19 +631,8 @@ export const TradingDashboard = () => {
             onJoinMarket={setSelectedMarket}
           />
           <LeaderboardCard />
-        </div>
-      </main>
-
-      <footer
-        className={`mt-20 flex flex-col items-center justify-between gap-4 border-t border-white/5 py-8 opacity-30 grayscale transition-all duration-700 hover:opacity-100 hover:grayscale-0 md:flex-row ${showAccount ? 'blur-xl' : ''}`}
-      >
-        <p className="text-xs font-bold tracking-widest">SOMNIA PREDICTION PROTOCOL 2026</p>
-        <div className="flex gap-6 text-xs font-black uppercase">
-          <span className="transition-colors hover:text-orange-500">Twitter</span>
-          <span className="transition-colors hover:text-orange-500">Discord</span>
-          <span className="transition-colors hover:text-orange-500">Docs</span>
-        </div>
-      </footer>
+        </aside>
+      </div>
     </div>
   );
 };

@@ -2,37 +2,37 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  createChart,
+  AreaSeries,
   ColorType,
   IChartApi,
   ISeriesApi,
-  AreaSeries,
+  LineStyle,
+  createChart,
   createSeriesMarkers,
 } from 'lightweight-charts';
 import { HermesClient } from '@pythnetwork/hermes-client';
+import { ArrowDownRight, ArrowUpRight, Waves } from 'lucide-react';
+import { Panel, StatPill } from './ObsidianPrimitives';
 import { formatTimeframe, type TradeExecutionRecord } from '../utils/bitdrum';
 
-// Pyth Network BTC/USD Configuration
 const PYTH_BTC_ID = '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43';
 const PYTH_HERMES_URL = 'https://hermes.pyth.network';
 const PYTH_BENCHMARK_URL = 'https://benchmarks.pyth.network/v1/shims/tradingview';
 
 export interface TradeMarker {
-  time: number; // unix seconds
+  time: number;
   price: number;
   direction: 'UP' | 'DOWN';
   label: string;
 }
 
 interface PriceChartProps {
-  data?: any[];
   tradeMarkers?: TradeMarker[];
   recentExecutions?: TradeExecutionRecord[];
   onPriceUpdate?: (price: number | null) => void;
 }
 
 export const PriceChart: React.FC<PriceChartProps> = ({
-  data,
   tradeMarkers = [],
   recentExecutions = [],
   onPriceUpdate,
@@ -40,10 +40,14 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+  const strikeLineRef = useRef<ReturnType<ISeriesApi<'Area'>['createPriceLine']> | null>(null);
+  const markersPluginRef = useRef<any>(null);
+
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [isLive, setIsLive] = useState(false);
-  const visibleExecutions = useMemo(() => recentExecutions.slice(0, 4), [recentExecutions]);
+  const visibleExecutions = useMemo(() => recentExecutions.slice(0, 3), [recentExecutions]);
+  const latestStrike = tradeMarkers.length ? tradeMarkers[tradeMarkers.length - 1]?.price ?? null : null;
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -51,26 +55,36 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#d1d5db',
+        textColor: '#9ca3af',
+        attributionLogo: false,
       },
       grid: {
-        vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-        horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+        vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+        horzLines: { color: 'rgba(255, 255, 255, 0.04)' },
       },
       width: chartContainerRef.current.clientWidth,
-      height: 380,
+      height: 390,
+      crosshair: {
+        vertLine: { color: 'rgba(245, 185, 66, 0.18)', width: 1, style: LineStyle.Solid },
+        horzLine: { color: 'rgba(245, 185, 66, 0.18)', width: 1, style: LineStyle.Solid },
+      },
       timeScale: {
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.06)',
         timeVisible: true,
         secondsVisible: false,
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(255, 255, 255, 0.06)',
       },
     });
 
     const series = chart.addSeries(AreaSeries, {
-      lineColor: '#f97316',
-      topColor: 'rgba(249, 115, 22, 0.3)',
-      bottomColor: 'rgba(249, 115, 22, 0.0)',
+      lineColor: '#f5b942',
+      topColor: 'rgba(245, 185, 66, 0.28)',
+      bottomColor: 'rgba(59, 130, 246, 0.03)',
       lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
     });
 
     seriesRef.current = series;
@@ -86,52 +100,57 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         );
         const result = await response.json();
         if (result.s === 'ok') {
-          const formatted = result.t.map((timestamp: number, i: number) => ({
+          const formatted = result.t.map((timestamp: number, index: number) => ({
             time: timestamp as any,
-            value: result.c[i],
+            value: result.c[index],
           }));
           series.setData(formatted);
-          setCurrentPrice(result.c[result.c.length - 1]);
-          onPriceUpdate?.(result.c[result.c.length - 1] ?? null);
+          const nextPrice = result.c[result.c.length - 1] ?? null;
+          setCurrentPrice(nextPrice);
+          onPriceUpdate?.(nextPrice);
+          chart.timeScale().fitContent();
         }
-      } catch (e) {
-        console.error('Failed to fetch Pyth history:', e);
+      } catch (error) {
+        console.error('Failed to fetch Pyth history:', error);
       }
     };
 
     fetchPythHistory();
 
     const hermes = new HermesClient(PYTH_HERMES_URL, {});
-    let interval: any;
+    let interval: NodeJS.Timeout | null = null;
 
     const startStreaming = async () => {
-      try {
-        interval = setInterval(async () => {
+      interval = setInterval(async () => {
+        try {
           const updates = await hermes.getLatestPriceUpdates([PYTH_BTC_ID]);
-          if (updates && updates.parsed && updates.parsed.length > 0) {
+          if (updates?.parsed?.length) {
             const priceData = updates.parsed[0].price;
-            const price = Number(priceData.price) * Math.pow(10, priceData.expo);
-            if (seriesRef.current) {
-              seriesRef.current.update({
-                time: Math.floor(Date.now() / 1000) as any,
-                value: price,
-              });
-            }
-            setCurrentPrice((prev) => {
-              if (prev) setPriceChange(((price - prev) / prev) * 100);
-              return price;
+            const nextPrice = Number(priceData.price) * Math.pow(10, priceData.expo);
+
+            series.update({
+              time: Math.floor(Date.now() / 1000) as any,
+              value: nextPrice,
             });
-            onPriceUpdate?.(price);
+
+            setCurrentPrice((previous) => {
+              if (previous) {
+                setPriceChange(((nextPrice - previous) / previous) * 100);
+              }
+              return nextPrice;
+            });
+
+            onPriceUpdate?.(nextPrice);
             setIsLive(true);
           }
-        }, 2000);
-      } catch (e) {
-        console.error('Pyth Stream Error:', e);
-        setIsLive(false);
-      }
+        } catch (error) {
+          console.error('Pyth stream error:', error);
+          setIsLive(false);
+        }
+      }, 2000);
     };
 
-    startStreaming();
+    void startStreaming();
 
     const handleResize = () => {
       if (chartContainerRef.current) {
@@ -148,14 +167,29 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     };
   }, [onPriceUpdate]);
 
-  // Apply trade markers whenever they change (lightweight-charts v5 API)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const markersPluginRef = useRef<any>(null);
+  useEffect(() => {
+    if (!seriesRef.current) return;
+
+    if (strikeLineRef.current) {
+      seriesRef.current.removePriceLine(strikeLineRef.current);
+      strikeLineRef.current = null;
+    }
+
+    if (latestStrike) {
+      strikeLineRef.current = seriesRef.current.createPriceLine({
+        price: latestStrike,
+        color: '#22d3ee',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'Strike',
+      });
+    }
+  }, [latestStrike]);
 
   useEffect(() => {
     if (!seriesRef.current) return;
 
-    // Destroy previous plugin instance before creating a new one
     if (markersPluginRef.current) {
       markersPluginRef.current.detach?.();
       markersPluginRef.current = null;
@@ -163,84 +197,103 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
     if (!tradeMarkers.length) return;
 
-    const markers = tradeMarkers.map((m) => ({
-      time: m.time as any,
-      position: m.direction === 'UP' ? 'belowBar' : 'aboveBar',
-      color: m.direction === 'UP' ? '#10b981' : '#f43f5e',
-      shape: m.direction === 'UP' ? 'arrowUp' : 'arrowDown',
-      text: m.label,
+    const markers = tradeMarkers.map((marker) => ({
+      time: marker.time as any,
+      position: marker.direction === 'UP' ? 'belowBar' : 'aboveBar',
+      color: marker.direction === 'UP' ? '#16a34a' : '#dc2626',
+      shape: marker.direction === 'UP' ? 'arrowUp' : 'arrowDown',
+      text: marker.label,
     })) as any[];
 
     markersPluginRef.current = createSeriesMarkers(seriesRef.current, markers);
   }, [tradeMarkers]);
 
   return (
-    <div className="glass-morphism h-[450px] relative overflow-hidden flex flex-col">
-      <div className="flex justify-between items-center mb-4 px-2">
-        <div className="flex flex-col">
-          <h3 className="text-lg font-bold text-white uppercase tracking-tighter italic">BTC / USD</h3>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
-              Pyth Core Oracle
-            </span>
-            {isLive && (
-              <div className="flex items-center gap-1.5 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
-                <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-ping" />
-                <span className="text-[8px] text-orange-500 font-black">STREAMING</span>
-              </div>
-            )}
+    <Panel className="surface-lift p-5 sm:p-6">
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+          <div>
+            <div className="text-[0.68rem] uppercase tracking-[0.34em] text-[var(--accent-gold)]">
+              Bitcoin Market Pulse
+            </div>
+            <div className="mt-3 flex items-end gap-3">
+              <h2 className="font-heading text-[clamp(2rem,3vw,3.5rem)] font-semibold tracking-[-0.06em] text-[var(--text-primary)]">
+                BTC / USD
+              </h2>
+              {isLive ? (
+                <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(245,185,66,0.16)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.66rem] uppercase tracking-[0.26em] text-[var(--accent-gold)]">
+                  <Waves className="h-3.5 w-3.5" />
+                  Live
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 lg:items-end">
+            <div className="font-mono text-[clamp(1.6rem,2vw,2.5rem)] font-semibold tracking-[-0.05em] text-[var(--text-primary)]">
+              {currentPrice
+                ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : '--'}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <StatPill
+                label="Move"
+                value={`${priceChange >= 0 ? '+' : '-'}${Math.abs(priceChange).toFixed(3)}%`}
+                accent={priceChange >= 0 ? 'success' : 'danger'}
+              />
+              {latestStrike ? <StatPill label="Strike" value={`$${latestStrike.toFixed(2)}`} accent="core" /> : null}
+            </div>
           </div>
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-xl font-black text-white font-mono tracking-tighter">
-            {currentPrice
-              ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-              : '---'}
-          </span>
-          <span
-            className={`text-[10px] font-black px-2 py-0.5 rounded ${priceChange >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
-          >
-            {priceChange >= 0 ? '▲' : '▼'}
-            {Math.abs(priceChange).toFixed(4)}%
-          </span>
+
+        <div className="rounded-[1.75rem] border border-[color:var(--border-subtle)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] p-3 sm:p-4">
+          <div ref={chartContainerRef} className="w-full" />
         </div>
-      </div>
-      <div ref={chartContainerRef} className="flex-1 w-full" />
-      {visibleExecutions.length ? (
-        <div className="mt-4 grid gap-2 md:grid-cols-2">
-          {visibleExecutions.map((execution) => (
-            <div
-              key={execution.id}
-              className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
-                    {execution.kind === 'OPEN' ? 'Execution Opened' : `Joined ${execution.marketId ?? 'market'}`}
+
+        {visibleExecutions.length ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            {visibleExecutions.map((execution) => {
+              const isUp = execution.direction === 'UP';
+              return (
+                <div
+                  key={execution.id}
+                  className="rounded-[1.45rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      {isUp ? (
+                        <ArrowUpRight className="h-4 w-4 text-[var(--state-up)]" />
+                      ) : (
+                        <ArrowDownRight className="h-4 w-4 text-[var(--state-down)]" />
+                      )}
+                      <span className="text-[0.7rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">
+                        {execution.kind === 'OPEN' ? 'Opened' : 'Joined'}
+                      </span>
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.24em] ${
+                        execution.status === 'confirmed'
+                          ? 'border-[rgba(22,163,74,0.2)] bg-[rgba(22,163,74,0.1)] text-[var(--state-up)]'
+                          : execution.status === 'failed'
+                            ? 'border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.12)] text-[var(--state-down)]'
+                            : 'border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)] text-[var(--accent-gold)]'
+                      }`}
+                    >
+                      {execution.status}
+                    </span>
+                  </div>
+                  <p className="mt-4 font-heading text-xl tracking-[-0.04em] text-[var(--text-primary)]">
+                    {execution.direction}
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-white">
-                    {execution.direction} · {formatTimeframe(execution.timeframeSeconds)}
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    {formatTimeframe(execution.timeframeSeconds)} · {execution.stake} STT
                   </p>
                 </div>
-                <span
-                  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.22em] ${
-                    execution.status === 'confirmed'
-                      ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
-                      : execution.status === 'failed'
-                        ? 'border-rose-500/20 bg-rose-500/10 text-rose-200'
-                        : 'border-orange-500/20 bg-orange-500/10 text-orange-200'
-                  }`}
-                >
-                  {execution.status}
-                </span>
-              </div>
-              <p className="mt-2 text-[11px] font-mono text-slate-300">
-                {execution.entryPrice ? `$${execution.entryPrice.toFixed(2)}` : 'Awaiting price'} · {execution.stake} STT
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   );
 };

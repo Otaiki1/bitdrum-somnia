@@ -325,11 +325,18 @@ export async function claimMarket(params: {
  * Format a raw token amount (in wei, 18 decimals) to a human-readable string.
  */
 export function formatTokenAmount(
-  rawAmount: string | null | undefined,
+  rawAmount: string | bigint | null | undefined,
   decimals = STT_DECIMALS,
   precision = 4,
 ) {
-  const value = BigInt(rawAmount || '0');
+  if (typeof rawAmount === 'string' && rawAmount.includes('.')) {
+    const numeric = Number(rawAmount);
+    if (!Number.isFinite(numeric)) return '0';
+    return numeric.toFixed(precision).replace(/\.?0+$/, '');
+  }
+
+  const normalized = typeof rawAmount === 'bigint' ? rawAmount : BigInt(rawAmount || '0');
+  const value = normalized;
   const isNegative = value < 0n;
   const absoluteValue = isNegative ? value * -1n : value;
   const divisor = 10n ** BigInt(decimals);
