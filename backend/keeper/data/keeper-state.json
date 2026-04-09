@@ -1,31 +1,31 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-09T19:01:59.777Z",
+  "updatedAt": "2026-04-09T19:02:55.946Z",
   "markets": {
     "1": {
       "marketId": "1",
       "joinDeadline": 0,
       "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T19:01:57.403Z"
+      "lastSeenAt": "2026-04-09T19:02:52.805Z"
     },
     "2": {
       "marketId": "2",
       "joinDeadline": 0,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:57.608Z"
+      "lastSeenAt": "2026-04-09T19:02:52.985Z"
     },
     "3": {
       "marketId": "3",
       "joinDeadline": 0,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:57.791Z"
+      "lastSeenAt": "2026-04-09T19:02:53.161Z"
     },
     "4": {
       "marketId": "4",
       "joinDeadline": 1775755940,
       "expiryAt": 1775755980,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:57.973Z",
+      "lastSeenAt": "2026-04-09T19:02:53.356Z",
       "lastAttemptAt": "2026-04-09T17:34:15.295Z"
     },
     "5": {
@@ -33,7 +33,7 @@
       "joinDeadline": 1775756474,
       "expiryAt": 1775756514,
       "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T19:01:58.158Z",
+      "lastSeenAt": "2026-04-09T19:02:53.532Z",
       "lastAttemptAt": "2026-04-09T17:41:54.295Z"
     },
     "6": {
@@ -41,7 +41,7 @@
       "joinDeadline": 1775756791,
       "expiryAt": 1775757031,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:58.341Z",
+      "lastSeenAt": "2026-04-09T19:02:53.727Z",
       "lastAttemptAt": "2026-04-09T17:51:18.412Z"
     },
     "7": {
@@ -49,7 +49,7 @@
       "joinDeadline": 1775756765,
       "expiryAt": 1775756805,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:58.528Z",
+      "lastSeenAt": "2026-04-09T19:02:53.922Z",
       "lastAttemptAt": "2026-04-09T17:46:52.922Z"
     },
     "8": {
@@ -57,7 +57,7 @@
       "joinDeadline": 1775756993,
       "expiryAt": 1775757233,
       "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T19:01:58.735Z",
+      "lastSeenAt": "2026-04-09T19:02:54.090Z",
       "lastAttemptAt": "2026-04-09T17:54:01.099Z"
     },
     "9": {
@@ -65,7 +65,7 @@
       "joinDeadline": 1775756966,
       "expiryAt": 1775757006,
       "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T19:01:58.933Z",
+      "lastSeenAt": "2026-04-09T19:02:55.163Z",
       "lastAttemptAt": "2026-04-09T17:50:28.075Z"
     },
     "10": {
@@ -73,7 +73,7 @@
       "joinDeadline": 1775756974,
       "expiryAt": 1775757014,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:59.164Z",
+      "lastSeenAt": "2026-04-09T19:02:55.359Z",
       "lastAttemptAt": "2026-04-09T18:38:33.770Z"
     },
     "11": {
@@ -81,7 +81,7 @@
       "joinDeadline": 1775757745,
       "expiryAt": 1775757785,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:59.380Z",
+      "lastSeenAt": "2026-04-09T19:02:55.547Z",
       "lastAttemptAt": "2026-04-09T18:38:33.786Z"
     },
     "12": {
@@ -89,7 +89,7 @@
       "joinDeadline": 1775758107,
       "expiryAt": 1775758147,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T19:01:59.591Z",
+      "lastSeenAt": "2026-04-09T19:02:55.762Z",
       "lastAttemptAt": "2026-04-09T18:38:33.838Z"
     },
     "13": {
@@ -97,7 +97,7 @@
       "joinDeadline": 1775758440,
       "expiryAt": 1775758480,
       "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T19:01:59.777Z",
+      "lastSeenAt": "2026-04-09T19:02:55.946Z",
       "lastAttemptAt": "2026-04-09T18:38:33.854Z"
     }
   }
