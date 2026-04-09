@@ -17,7 +17,7 @@
 **Current (WRONG - still has Starknet config):**
 
 ```env
-OPENAI_API_KEY=REDACTED_SECRET
+OPENAI_API_KEY=<insert-your-openai-api-key-here>
 STARKNET_RPC_URL=https://starknet-sepolia.g.alchemy.com/v2/EXU6tBQoqumAZD4zPXjD-SWOurlSWxR_
 MARKET_CONTRACT_ADDRESS=0xe34d84cf5b661f0206d369d9d919b13a13b08ff0eb54e1e3056dd592db4303
 ```
