@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBitdrumWallet } from './BitdrumWalletProvider';
 import { usePositions } from '../hooks/usePositions';
@@ -22,6 +22,16 @@ function CountdownTimer({ settlementDeadline }: { settlementDeadline: number | n
   });
 
   if (remaining === null) return null;
+  
+  if (remaining <= 0) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--accent-gold)]">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Settling
+      </span>
+    );
+  }
+
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
   return (

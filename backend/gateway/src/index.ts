@@ -62,6 +62,40 @@ app.get('/health', async (_req, res) => {
   });
 });
 
+/**
+ * DB Reactivity: Listen for NOTIFY bitdrum_update from the indexer.
+ * This ensures the gateway pushes fresh data to WS only AFTER the
+ * DB has been committed, avoiding race conditions where the reactivity
+ * bridge triggers a fetch before the indexer has finished writing.
+ */
+async function startDbReactivity() {
+  try {
+    const client = await pool.connect();
+    await client.query('LISTEN bitdrum_update');
+
+    client.on('notification', (msg) => {
+      if (msg.channel === 'bitdrum_update') {
+        publishInvalidation({
+          reason: 'reactivity-event',
+          eventName: 'DatabaseUpdate',
+          occurredAt: new Date().toISOString(),
+        });
+      }
+    });
+
+    console.log('[Gateway] Database reactivity (LISTEN bitdrum_update) active.');
+
+    client.on('error', (err) => {
+      console.error('[Gateway] Listen client error:', err);
+      client.release();
+      setTimeout(startDbReactivity, 5000);
+    });
+  } catch (err) {
+    console.error('[Gateway] Failed to start DB reactivity:', err);
+    setTimeout(startDbReactivity, 5000);
+  }
+}
+
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
@@ -167,11 +201,12 @@ wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
   });
 });
 
-server.listen(PORT, async () => {
+server.listen(PORT, '0.0.0.0', async () => {
   console.log(`BitDrum Gateway running on http://localhost:${PORT}`);
   publishInvalidation({
     reason: 'startup',
     occurredAt: new Date().toISOString(),
   });
   await startSomniaReactivityBridge();
+  void startDbReactivity();
 });

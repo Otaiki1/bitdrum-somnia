@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AreaSeries, CandlestickSeries, ColorType, IChartApi, ISeriesApi, LineStyle, createChart, createSeriesMarkers } from 'lightweight-charts';
 import { HermesClient } from '@pythnetwork/hermes-client';
-import { ArrowDownRight, ArrowUpRight, ExternalLink, LayoutPanelLeft, LineChart, Waves } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ExternalLink, LayoutPanelLeft, LineChart, Loader2, Waves } from 'lucide-react';
 import { Panel, StatPill } from './ObsidianPrimitives';
 import { formatTimeframe, type TradeExecutionRecord } from '../utils/bitdrum';
 
@@ -114,7 +114,7 @@ const ExecutionCard: React.FC<{ execution: TradeExecutionRecord }> = ({ executio
           </div>
 
           <span
-            className={`rounded-full border px-2.5 py-1 text-[0.55rem] font-bold uppercase tracking-[0.22em] ${
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.55rem] font-bold uppercase tracking-[0.22em] ${
               execution.status === 'confirmed'
                 ? 'border-[rgba(22,163,74,0.2)] bg-[rgba(22,163,74,0.08)] text-[var(--state-up)]'
                 : isFailed
@@ -122,7 +122,18 @@ const ExecutionCard: React.FC<{ execution: TradeExecutionRecord }> = ({ executio
                   : 'border-[rgba(245,185,66,0.2)] bg-[rgba(245,185,66,0.06)] text-[var(--accent-gold)] animate-pulse'
             }`}
           >
-            {isPending ? 'Pending' : isFailed ? 'Failed' : isExpired ? 'Settling' : 'Active'}
+            {isPending ? (
+              'Pending'
+            ) : isFailed ? (
+              'Failed'
+            ) : isExpired ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Settling
+              </>
+            ) : (
+              'Active'
+            )}
           </span>
         </div>
 

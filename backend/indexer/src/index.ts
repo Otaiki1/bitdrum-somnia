@@ -574,6 +574,9 @@ async function processLogs(fromBlock: bigint, toBlock: bigint) {
 
     await recomputeTraderProfiles(client);
     await client.query('COMMIT');
+
+    // Notify listeners (gateway) that the DB has been updated.
+    await client.query('NOTIFY bitdrum_update');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

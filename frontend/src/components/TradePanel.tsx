@@ -163,6 +163,14 @@ export const TradePanel = ({
   const coreConfidence = signal?.confidence ?? 52;
   const rationale = signal?.rationale || 'The Core is calibrating directional conviction from live market structure.';
 
+  const formatErrorMessage = (msg: string) => {
+    if (!msg) return '';
+    if (msg.includes('User rejected the request')) return 'Order cancelled by user';
+    if (msg.toLowerCase().includes('insufficient funds')) return 'Insufficient STT balance';
+    if (msg.includes('reverted')) return 'Market logic reverted (stale price or slippage)';
+    return msg.length > 160 ? `${msg.slice(0, 160)}...` : msg;
+  };
+
   return (
     <Panel tone="gold" className="surface-lift overflow-hidden p-5 sm:p-6">
       <div className="flex items-start justify-between gap-4">
@@ -345,8 +353,8 @@ export const TradePanel = ({
         </div>
 
         {error ? (
-          <div className="rounded-[1.4rem] border border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)] px-4 py-4 text-sm text-[var(--text-primary)]">
-            {error}
+          <div className="overflow-hidden rounded-[1.4rem] border border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)] px-4 py-4 text-sm text-[var(--text-primary)] break-words">
+            {formatErrorMessage(error)}
           </div>
         ) : null}
 

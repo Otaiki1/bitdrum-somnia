@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query';
 import { formatUnits } from 'viem';
 import {
+  Loader2,
   X,
 } from 'lucide-react';
 import { PriceChart, type TradeMarker } from './PriceChart';
@@ -44,7 +45,8 @@ function CountdownTimer({ settlementDeadline }: { settlementDeadline: number | n
 
   if (remaining <= 0) {
     return (
-      <span className="rounded-full border border-[rgba(220,38,38,0.2)] bg-[rgba(220,38,38,0.1)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--state-down)]">
+      <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(220,38,38,0.2)] bg-[rgba(220,38,38,0.1)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--state-down)]">
+        <Loader2 className="h-3 w-3 animate-spin" />
         Settling
       </span>
     );
@@ -192,17 +194,61 @@ export const TradingDashboard = () => {
     return () => clearInterval(id);
   }, [refreshBalance]);
 
+  // Aggressive refresh when settling: If any position is "Settling", poll faster.
   useEffect(() => {
+    const hasSettling = positions.some(p => {
+      if (!p.settlement_deadline) return false;
+      const deadline = new Date(p.settlement_deadline).getTime();
+      const now = Date.now();
+      return now >= deadline && p.status !== 'WIN' && p.status !== 'LOSS' && p.status !== 'DRAW';
+    });
+
+    if (hasSettling) {
+      const id = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ['positions', viewerAddress] });
+      }, 3000);
+      return () => clearInterval(id);
+    }
+  }, [positions, queryClient, viewerAddress]);
+
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Mark existing settled positions as "seen" on mount so we don't pop up old history.
+  // Then, watch for NEW settlements.
+  useEffect(() => {
+    if (positionsLoading) return;
+
+    if (!isInitialized && positions.length > 0) {
+      // Initialize seenOutcomes with whatever is already settled.
+      for (const pos of positions) {
+        const isSettled = pos.status === 'WIN' || pos.status === 'LOSS' || pos.status === 'DRAW';
+        if (isSettled) {
+          const key = `${pos.market_id}-${pos.direction}`;
+          seenOutcomes.current.add(key);
+        }
+      }
+      setIsInitialized(true);
+      return;
+    }
+
+    if (!isInitialized && positions.length === 0) {
+      // If we loaded and have no positions, we are initialized (ready for first trade).
+      setIsInitialized(true);
+      return;
+    }
+
+    // After initialization, watch for NEW settlements.
     for (const pos of positions) {
       const key = `${pos.market_id}-${pos.direction}`;
-      if (seenOutcomes.current.has(key)) continue;
-      if (pos.status === 'WIN' || pos.status === 'LOSS' || pos.status === 'DRAW') {
+      const isSettled = pos.status === 'WIN' || pos.status === 'LOSS' || pos.status === 'DRAW';
+      
+      if (isSettled && !seenOutcomes.current.has(key)) {
         seenOutcomes.current.add(key);
         setOutcomeModal({ outcome: pos.status as 'WIN' | 'LOSS' | 'DRAW', position: pos });
-        break;
+        break; // Show one at a time if multiple settle at once.
       }
     }
-  }, [positions]);
+  }, [positions, positionsLoading, isInitialized]);
 
   const livePnL = useMemo(() => formatTokenAmount(positionSummary?.resolved_pnl || '0'), [positionSummary?.resolved_pnl]);
 
@@ -221,8 +267,14 @@ export const TradingDashboard = () => {
 
     for (const position of positions) {
       if (!position.entry_price) continue;
+      
+      // Only show markers for active or settling positions. Clear them once resolved.
+      const isResolved = position.status === 'WIN' || position.status === 'LOSS' || position.status === 'DRAW';
+      if (isResolved) continue;
+
       const key = `${position.market_id}-${position.direction}`;
       if (markers.some((marker) => marker.label.includes(key))) continue;
+      
       const entryPrice = formatOraclePrice(position.entry_price);
       if (!entryPrice) continue;
       markers.push({
