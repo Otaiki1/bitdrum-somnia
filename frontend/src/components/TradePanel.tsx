@@ -5,7 +5,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowUpRight,
-  BrainCircuit,
   ExternalLink,
   Loader2,
   Radar,
@@ -15,7 +14,7 @@ import {
 import { useBitdrumWallet } from './BitdrumWalletProvider';
 import { useMarketDetail } from '../hooks/useMarketDetail';
 import { useSignal } from '../hooks/useSignal';
-import { usePom } from '../hooks/usePom';
+import { usePayoutBps } from '../hooks/usePayoutBps';
 import {
   formatOraclePrice,
   formatTimeframe,
@@ -27,12 +26,6 @@ import {
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
 import { Eyebrow, Panel, StatPill } from './ObsidianPrimitives';
-
-function signalDirectionTone(direction: string) {
-  if (direction === 'UP') return 'text-[var(--state-up)]';
-  if (direction === 'DOWN') return 'text-[var(--state-down)]';
-  return 'text-[var(--text-primary)]';
-}
 
 export const TradePanel = ({
   selectedMarket,
@@ -60,24 +53,19 @@ export const TradePanel = ({
 
   const { data: marketDetailData } = useMarketDetail(selectedMarket?.id, wallet?.address);
   const { data: signalData, isLoading: signalLoading } = useSignal(selectedMarket?.id, previewDirection, stake);
-  const { data: pomData } = usePom(selectedMarket?.id, previewDirection, stake);
+  const { data: payoutBps } = usePayoutBps();
 
   const activeMarket = selectedMarket?.id ? { ...selectedMarket, ...marketDetailData?.market } : null;
   const sttBalance = marketDetailData?.sttBalance ?? null;
   const signal = signalData?.signal;
-  const pom = pomData?.pom;
 
-  const currentPomBps = useMemo(() => {
-    if (pom?.pom_profit_bps) return Number(pom.pom_profit_bps);
-    if (signal?.pom_profit_bps) return Number(signal.pom_profit_bps);
-    if (activeMarket?.pom_profit_bps) return Number(activeMarket.pom_profit_bps);
-    return 1000;
-  }, [activeMarket?.pom_profit_bps, pom?.pom_profit_bps, signal?.pom_profit_bps]);
+  // Default to 50% (5000 bps) until the contract value loads.
+  const effectivePayoutBps = payoutBps ?? 5000;
 
   const projectedProfit = useMemo(() => {
     const numericStake = Number(stake || '0');
-    return numericStake * (currentPomBps / 10_000);
-  }, [currentPomBps, stake]);
+    return numericStake * (effectivePayoutBps / 10_000);
+  }, [effectivePayoutBps, stake]);
 
   const handleConnect = async () => {
     setError(null);
@@ -109,18 +97,11 @@ export const TradePanel = ({
       const timeframeSeconds = selectedMarket?.duration_seconds ?? durationSeconds;
 
       if (mode === 'open') {
-        const resolvedCurrentPrice = currentPrice ?? formatOraclePrice(activeMarket?.entry_price) ?? null;
-
-        if (!resolvedCurrentPrice) {
-          throw new Error('Live BTC strike price is unavailable right now.');
-        }
-
         tx = await openMarket({
           wallet,
           direction,
           stake,
           durationSeconds: timeframeSeconds,
-          currentPrice: resolvedCurrentPrice,
         });
         kind = 'OPEN';
       } else if (activeMarket?.id) {
@@ -235,7 +216,7 @@ export const TradePanel = ({
               </p>
               <div className="mt-5 grid grid-cols-2 gap-3">
                 <StatPill label="Confidence" value={`${coreConfidence}%`} accent="core" />
-                <StatPill label="POM" value={`+${(currentPomBps / 100).toFixed(0)}%`} accent="gold" />
+                <StatPill label="Payout" value={`+${(effectivePayoutBps / 100).toFixed(0)}%`} accent="gold" />
               </div>
             </div>
           </div>
@@ -249,8 +230,8 @@ export const TradePanel = ({
             <StatPill label="State" value={activeMarket.state} accent="gold" />
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[30, 60, 300].map((seconds) => (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[60, 300].map((seconds) => (
               <button
                 key={seconds}
                 onClick={() => setDurationSeconds(seconds)}

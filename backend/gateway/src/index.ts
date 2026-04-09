@@ -6,6 +6,7 @@ import WebSocket, { Server as WebSocketServer } from 'ws';
 import router from './routes';
 import { publishInvalidation, subscribeToInvalidations } from './services/realtime';
 import { startSomniaReactivityBridge } from './services/reactivity';
+import { pool } from './db';
 
 dotenv.config();
 
@@ -25,8 +26,40 @@ app.use(cors());
 app.use(express.json());
 app.use('/api', router);
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'healthy', service: 'BitDrum Gateway' });
+// Enhanced health endpoint — checks DB connectivity and keeper heartbeat.
+app.get('/health', async (_req, res) => {
+  const checks: Record<string, string> = {};
+
+  // Database check
+  try {
+    await pool.query('SELECT 1');
+    checks.db = 'ok';
+  } catch {
+    checks.db = 'error';
+  }
+
+  // Keeper heartbeat: check if keeper-state.json was updated recently.
+  try {
+    const { readFile } = await import('fs/promises');
+    const keeperStatePath = process.env.KEEPER_STATE_FILE
+      ? require('path').resolve(process.cwd(), process.env.KEEPER_STATE_FILE)
+      : require('path').resolve(process.cwd(), '../../keeper/data/keeper-state.json');
+    const raw = await readFile(keeperStatePath, 'utf8');
+    const state = JSON.parse(raw);
+    const updatedAt = new Date(state.updatedAt).getTime();
+    const ageSeconds = Math.floor((Date.now() - updatedAt) / 1000);
+    checks.keeper = ageSeconds < 30 ? 'ok' : `stale (${ageSeconds}s ago)`;
+  } catch {
+    checks.keeper = 'unknown';
+  }
+
+  const allOk = Object.values(checks).every((v) => v === 'ok' || v === 'unknown');
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? 'healthy' : 'degraded',
+    service: 'BitDrum Gateway V2',
+    checks,
+    ts: new Date().toISOString(),
+  });
 });
 
 const server = createServer(app);

@@ -34,14 +34,6 @@ const MARKET_ABI = [
     inputs: [
       { name: 'direction', type: 'uint8' },
       { name: 'duration', type: 'uint256' },
-      {
-        name: 'strikeData',
-        type: 'tuple',
-        components: [
-          { name: 'price', type: 'uint128' },
-          { name: 'timestamp', type: 'uint128' },
-        ],
-      },
     ],
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'payable',
@@ -232,11 +224,8 @@ export async function openMarket(params: {
   direction: BitdrumDirection;
   stake: string;
   durationSeconds: number;
-  currentPrice: number;
 }): Promise<BitdrumTx> {
   const amount = parseUnits(params.stake, STT_DECIMALS);
-  const strikePrice = BigInt(Math.round(params.currentPrice * 10 ** 8));
-  const timestamp = BigInt(Math.floor(Date.now() / 1000));
   const chain = buildSomniaChain();
 
   const sttBalance = await params.wallet.publicClient.getBalance({ address: params.wallet.address });
@@ -253,7 +242,6 @@ export async function openMarket(params: {
     args: [
       directionToEnum(params.direction),
       BigInt(params.durationSeconds),
-      { price: strikePrice, timestamp },
     ],
     value: amount,
     account: params.wallet.address,

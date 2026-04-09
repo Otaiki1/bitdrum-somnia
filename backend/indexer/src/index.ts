@@ -17,7 +17,9 @@ dotenv.config();
 const SOMNIA_RPC_URL = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
 const SOMNIA_RPC_FALLBACK_URL = process.env.SOMNIA_RPC_FALLBACK_URL || 'https://rpc.somnia.network';
 const SOMNIA_CHAIN_ID = Number(process.env.SOMNIA_CHAIN_ID || 50312);
+// V2 contract addresses
 const PREDICTION_MARKET_ADDRESS = process.env.PREDICTION_MARKET_ADDRESS || '';
+const PRICE_ADAPTER_ADDRESS     = process.env.PRICE_ADAPTER_ADDRESS || '';
 const START_BLOCK = BigInt(process.env.START_BLOCK || 0);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 3000);
 const BLOCK_BATCH_SIZE = BigInt(process.env.BLOCK_BATCH_SIZE || 500);
@@ -30,15 +32,20 @@ const DATABASE_URL =
 
 const pool = new Pool({ connectionString: DATABASE_URL });
 
+// V2: MarketOpened now includes payoutBps; MarketPomUpdated removed.
 const MARKET_ABI = parseAbi([
-  'event MarketOpened(uint256 indexed marketId, address indexed opener, uint8 direction, uint256 stakeAmount, uint256 duration, uint128 strikePrice)',
+  'event MarketOpened(uint256 indexed marketId, address indexed opener, uint8 direction, uint256 stakeAmount, uint256 duration, uint128 strikePrice, uint256 payoutBps)',
   'event MarketJoined(uint256 indexed marketId, address indexed participant, uint8 direction, uint256 stakeAmount)',
-  'event MarketPomUpdated(uint256 indexed marketId, uint256 pomProfitBps)',
   'event MarketLocked(uint256 indexed marketId)',
   'event MarketSettled(uint256 indexed marketId, uint8 outcome, uint128 settlementPrice, uint256 feeAmount, uint256 sweptToVault)',
   'event MarketClaimed(uint256 indexed marketId, address indexed participant, uint8 outcome, uint256 payout, uint256 profit)',
   'function getMarket(uint256 marketId) view returns ((uint256 marketId,address opener,uint8 openerDirection,uint256 duration,uint256 openedAt,uint256 joiningWindowEnd,uint256 expiryAt,uint128 strikePrice,uint128 settlementPrice,uint128 strikeTimestamp,uint128 settlementTimestamp,uint256 pomProfitBps,uint256 upPool,uint256 downPool,uint256 totalUserStaked,uint256 vaultCommitted,uint256 feeAmount,uint256 sweptToVault,uint256 participantCount,uint256 claimedCount,uint8 state,uint8 outcome))',
   'function nextMarketId() view returns (uint256)',
+]);
+
+// Price adapter ABI for optional round indexing.
+const ADAPTER_ABI = parseAbi([
+  'event PricePosted(uint256 indexed roundId, uint128 price, uint128 timestamp)',
 ]);
 
 type IndexerState = {
@@ -459,8 +466,14 @@ async function processLogs(fromBlock: bigint, toBlock: bigint) {
     throw new Error('Missing PREDICTION_MARKET_ADDRESS');
   }
 
+  // Collect logs from market contract (and optionally adapter).
+  const addresses: `0x${string}`[] = [PREDICTION_MARKET_ADDRESS as `0x${string}`];
+  if (PRICE_ADAPTER_ADDRESS) {
+    addresses.push(PRICE_ADAPTER_ADDRESS as `0x${string}`);
+  }
+
   const logs = await publicClient.getLogs({
-    address: PREDICTION_MARKET_ADDRESS as `0x${string}`,
+    address: addresses.length === 1 ? addresses[0] : addresses,
     fromBlock,
     toBlock,
   });
@@ -527,8 +540,7 @@ async function processLogs(fromBlock: bigint, toBlock: bigint) {
       }
 
       if (
-        decoded.eventName === 'MarketPomUpdated'
-        || decoded.eventName === 'MarketLocked'
+        decoded.eventName === 'MarketLocked'
         || decoded.eventName === 'MarketSettled'
       ) {
         const marketId = decoded.args.marketId as bigint;
@@ -549,6 +561,14 @@ async function processLogs(fromBlock: bigint, toBlock: bigint) {
           decoded.args.payout as bigint,
           log.transactionHash,
         );
+        continue;
+      }
+
+      // V2: index adapter price rounds for operator visibility.
+      if (decoded.eventName === 'PricePosted') {
+        // No DB write needed for MVP — log for observability only.
+        const args = decoded.args as Record<string, unknown>;
+        console.log(`[Indexer] PricePosted round=${args['roundId']} price=${args['price']} ts=${args['timestamp']}`);
       }
     }
 

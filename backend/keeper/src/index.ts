@@ -2,23 +2,28 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-import { settleExpiredMarkets } from './services/settlement';
+import { startPricePublisher, PUBLISH_INTERVAL_MS } from './services/pricePublisher';
+import { startMarketLifecycle } from './services/marketLifecycle';
 
-const POLLING_INTERVAL = Number(process.env.POLLING_INTERVAL) || 3000;
+// Market lifecycle poll interval — check for lock/settle actions.
+const LIFECYCLE_INTERVAL_MS = Number(process.env.POLLING_INTERVAL) || 3_000;
 
 const startKeeper = async () => {
-  console.log(`🚀 BitDrum Keeper Service Started V2`);
-  console.log(`Interval: ${POLLING_INTERVAL}ms`);
+  console.log(JSON.stringify({
+    event:              'keeper_start',
+    version:            'v2',
+    lifecycleIntervalMs: LIFECYCLE_INTERVAL_MS,
+    publishIntervalMs:   PUBLISH_INTERVAL_MS,
+  }));
 
-  const loop = async () => {
-    await settleExpiredMarkets();
-    setTimeout(loop, POLLING_INTERVAL);
-  };
+  // Loop 1: Post BTC/USD price to BitdrumPriceAdapter every ~20s.
+  await startPricePublisher();
 
-  loop();
+  // Loop 2: Lock open markets and settle expired markets every 3s.
+  await startMarketLifecycle(LIFECYCLE_INTERVAL_MS);
 };
 
 startKeeper().catch((err) => {
-  console.error('Fatal Keeper Error:', err);
+  console.error(JSON.stringify({ event: 'keeper_fatal', error: err?.message || String(err) }));
   process.exit(1);
 });

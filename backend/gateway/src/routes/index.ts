@@ -3,12 +3,9 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { checkSubscription } from '../middleware/auth';
 import { pool } from '../db';
-import {
-  getAiSignalFromStreams,
-  getLatestLeaderboardSnapshotFromStreams,
-  publishAiSignalToStreams,
-  publishLeaderboardSnapshotToStreams,
-} from '../services/streams';
+// V2: Streams write-on-read removed from GET endpoints.
+// Streams publishing is optional and async — not on the critical path.
+// import { ... } from '../services/streams';
 
 dotenv.config();
 
@@ -492,44 +489,14 @@ router.get('/signal/:market_id', checkSubscription, async (req, res) => {
       console.error('[Gateway] Signal cache fallback failed:', cacheError);
     }
 
-    try {
-      const streamedSignal = await getAiSignalFromStreams(market_id);
-      if (streamedSignal) {
-        return res.json(buildSignalResponseFromStreams(streamedSignal));
-      }
-    } catch (streamsError) {
-      console.error('[Gateway] Signal streams fallback failed:', streamsError);
-    }
-
-    res.status(500).json({ error: 'AI Agent unavailable', details: error.message });
+    // V2: no Streams fallback; if AI and DB are both unavailable, return graceful error.
+    res.status(503).json({ error: 'AI signal unavailable', details: error.message });
   }
 });
 
-router.get('/pom/preview', async (req, res) => {
-  const direction = String(req.query.direction || 'UP');
-  const stake = String(req.query.stake || '0');
-  const durationSeconds = Number(req.query.durationSeconds || req.query.duration_seconds || 300);
-
-  try {
-    const response = await axios.get(`${AI_AGENT_URL}/pom-preview`, {
-      params: { direction, stake, duration_seconds: durationSeconds },
-    });
-    res.json(response.data);
-  } catch (error: any) {
-    console.error(`[Gateway] POM preview error: ${error.message}`);
-    res.status(500).json({ error: 'POM engine unavailable', details: error.message });
-  }
-});
-
-router.get('/pom/:market_id', async (req, res) => {
-  try {
-    const response = await axios.get(`${AI_AGENT_URL}/pom/${req.params.market_id}`);
-    res.json(response.data);
-  } catch (error: any) {
-    console.error(`[Gateway] POM error: ${error.message}`);
-    res.status(500).json({ error: 'POM engine unavailable', details: error.message });
-  }
-});
+// V2: /pom endpoints removed. Payout rates are now fixed per-market and visible
+// onchain via market.pomProfitBps (locked at open time by vault liquidity).
+// Frontend reads payout directly from the contract via currentPayoutBps().
 
 // 3. Leaderboard
 router.get('/leaderboard', async (_req, res) => {
@@ -564,51 +531,9 @@ router.get('/leaderboard', async (_req, res) => {
       };
     });
 
-    const snapshotId = `global-${Date.now()}`;
-    const generatedAt = new Date().toISOString();
-    let streamsTxHash: string | null = null;
-
-    try {
-      streamsTxHash = await publishLeaderboardSnapshotToStreams({
-        snapshotId,
-        timeframe: 'global',
-        payloadJson: JSON.stringify(rankings),
-        generatedAt,
-      });
-    } catch (streamsError) {
-      console.error('[Gateway] Failed to publish leaderboard snapshot to Somnia Streams:', streamsError);
-    }
-
-    res.json({
-      rankings,
-      source: 'Postgres DB',
-      streams: streamsTxHash
-        ? {
-            snapshot_id: snapshotId,
-            tx_hash: streamsTxHash,
-            generated_at: generatedAt,
-          }
-        : null,
-    });
+    res.json({ rankings, source: 'Postgres DB' });
   } catch (error: any) {
     console.error('[Gateway] Leaderboard error:', error);
-    try {
-      const snapshot = await getLatestLeaderboardSnapshotFromStreams();
-      if (snapshot) {
-        return res.json({
-          rankings: snapshot.rankings,
-          source: 'somnia-streams',
-          streams: {
-            snapshot_id: snapshot.snapshot_id,
-            generated_at: snapshot.generated_at,
-            timeframe: snapshot.timeframe,
-          },
-        });
-      }
-    } catch (streamsError) {
-      console.error('[Gateway] Leaderboard streams fallback failed:', streamsError);
-    }
-
     res.status(500).json({ error: 'Database unavailable' });
   }
 });
@@ -956,73 +881,15 @@ router.post('/internal/ai-signals', async (req, res) => {
       [market_id, direction, confidence, rationale],
     );
 
-    let streamsTxHash: string | null = null;
-    const generatedAt = new Date().toISOString();
-
-    try {
-      streamsTxHash = await publishAiSignalToStreams({
-        marketId: market_id,
-        direction,
-        confidence: Number(confidence),
-        rationale,
-        generatedAt,
-      });
-    } catch (streamsError) {
-      console.error('[Gateway] AI signal streams publish failed:', streamsError);
-    }
-
-    res.status(201).json({
-      ok: true,
-      streams: streamsTxHash
-        ? {
-            tx_hash: streamsTxHash,
-            generated_at: generatedAt,
-          }
-        : null,
-    });
+    // V2: Streams publish removed from POST path (write-on-read pattern).
+    res.status(201).json({ ok: true });
   } catch (error: any) {
     console.error('[Gateway] AI signal persistence error:', error.message);
     res.status(500).json({ error: 'Failed to persist AI signal' });
   }
 });
 
-router.get('/streams/ai-signals/:market_id', async (req, res) => {
-  try {
-    const signal = await getAiSignalFromStreams(req.params.market_id);
-
-    if (!signal) {
-      return res.status(404).json({ error: 'No streamed AI signal found' });
-    }
-
-    res.json(buildSignalResponseFromStreams(signal));
-  } catch (error: any) {
-    console.error('[Gateway] Streams AI signal read error:', error.message);
-    res.status(500).json({ error: 'Failed to read streamed AI signal' });
-  }
-});
-
-router.get('/streams/leaderboard/latest', async (_req, res) => {
-  try {
-    const snapshot = await getLatestLeaderboardSnapshotFromStreams();
-
-    if (!snapshot) {
-      return res.status(404).json({ error: 'No streamed leaderboard snapshot found' });
-    }
-
-    res.json({
-      rankings: snapshot.rankings,
-      source: 'somnia-streams',
-      streams: {
-        snapshot_id: snapshot.snapshot_id,
-        generated_at: snapshot.generated_at,
-        timeframe: snapshot.timeframe,
-      },
-    });
-  } catch (error: any) {
-    console.error('[Gateway] Streams leaderboard read error:', error.message);
-    res.status(500).json({ error: 'Failed to read streamed leaderboard snapshot' });
-  }
-});
+// V2: /streams endpoints removed — Streams write-on-read eliminated from all read paths.
 
 // 7. Gateway Router
 export default router;
