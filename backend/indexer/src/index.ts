@@ -455,9 +455,9 @@ function determineTier(rank: number, totalRanked: number, settledMarkets: number
   const oracleCutoff = Math.max(1, Math.ceil(totalRanked * 0.01));
   const prophetCutoff = Math.max(1, Math.ceil(totalRanked * 0.05));
   const traderCutoff = Math.max(1, Math.ceil(totalRanked * 0.2));
-  if (settledMarkets >= 50 && rank <= oracleCutoff) return 'ORACLE';
-  if (settledMarkets >= 30 && rank <= prophetCutoff) return 'PROPHET';
-  if (settledMarkets >= 10 && rank <= traderCutoff) return 'TRADER';
+  if (settledMarkets >= 3 && rank <= oracleCutoff) return 'ORACLE';
+  if (settledMarkets >= 2 && rank <= prophetCutoff) return 'PROPHET';
+  if (settledMarkets >= 1 && rank <= traderCutoff) return 'TRADER';
   return 'SCOUT';
 }
 

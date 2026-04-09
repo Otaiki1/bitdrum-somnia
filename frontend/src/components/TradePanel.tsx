@@ -332,7 +332,7 @@ export const TradePanel = ({
           <div className="rounded-[1.4rem] border border-[rgba(220,38,38,0.14)] bg-[rgba(220,38,38,0.06)] p-4 text-center">
             <div className="text-[0.58rem] font-bold uppercase tracking-[0.24em] text-[var(--state-down)]">Risk</div>
             <div className="mt-3 font-heading text-xl font-bold text-[var(--text-primary)]">
-              0.00
+              {formatTokenAmount(stake || '0')}
               <span className="ml-1 text-[0.6rem] font-medium opacity-50">STT</span>
             </div>
           </div>

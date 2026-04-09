@@ -1,114 +1,80 @@
 {
   "version": 1,
-  "updatedAt": "2026-04-09T17:12:07.687Z",
+  "updatedAt": "2026-04-09T17:53:43.353Z",
   "markets": {
     "1": {
       "marketId": "1",
-      "joinDeadline": 1775753810,
-      "expiryAt": 1775753850,
+      "joinDeadline": 0,
       "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T17:12:07.296Z",
-      "lastAttemptAt": "2026-04-09T16:58:04.187Z",
-      "settlementPrice": "7137582535985",
-      "lockTxHash": "0x175de130d270f6f67de81fbf43e53cecfcf5fc76c15d486a83728edcb976ab9f",
-      "settlementTxHash": "0x496364c8b8a35c32a99210a061a371ba12b94f01c702b4464a9b717588231dce"
+      "lastSeenAt": "2026-04-09T17:53:41.006Z"
     },
     "2": {
       "marketId": "2",
-      "joinDeadline": 1775754216,
-      "expiryAt": 1775754256,
+      "joinDeadline": 0,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T17:12:07.498Z",
-      "lastAttemptAt": "2026-04-09T17:04:29.462Z",
-      "settlementPrice": "7093333810890",
-      "lockTxHash": "0x4bf46505ef16bf3f41f9c47f2e23d8489d6a9a6b70a85f20b0e7b5db99999116",
-      "settlementTxHash": "0xfe417e8f7baf8c5bf8b87d89de63c565038e9d8f7416cbfa04c3ca2571376997"
+      "lastSeenAt": "2026-04-09T17:53:41.193Z"
     },
     "3": {
       "marketId": "3",
-      "joinDeadline": 1775754620,
-      "expiryAt": 1775754660,
+      "joinDeadline": 0,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T17:12:07.687Z",
-      "lastAttemptAt": "2026-04-09T17:11:29.052Z",
-      "settlementPrice": "7137582535985",
-      "lockTxHash": "0xda11b9bfff212bfd99ed28d71340c29df7a1e74dcf6c652af046ef753979c00a",
-      "settlementTxHash": "0xa4ff4e547f3311de5630133ab1ba62bb646cfb81c34186c0124b9905d5357ded"
+      "lastSeenAt": "2026-04-09T17:53:41.378Z"
     },
     "4": {
       "marketId": "4",
-      "joinDeadline": 1775675983,
-      "expiryAt": 1775676183,
+      "joinDeadline": 1775755940,
+      "expiryAt": 1775755980,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T08:21:18.589Z",
-      "lastAttemptAt": "2026-04-09T06:00:20.871Z",
-      "settlementPrice": "7093333810890",
-      "lockTxHash": "0x8865c1bc48672e46646a559f92d926d2c655e3bcb71d01807c4bd2bb7e0c1e6e",
-      "settlementTxHash": "0x7c57239b17f83277fca37615057c899c26adca6cc0b3669d083e33724e0e1b4b"
+      "lastSeenAt": "2026-04-09T17:53:41.574Z",
+      "lastAttemptAt": "2026-04-09T17:34:15.295Z"
     },
     "5": {
       "marketId": "5",
-      "joinDeadline": 1775675909,
-      "expiryAt": 1775675929,
-      "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T08:21:18.841Z",
-      "lastAttemptAt": "2026-04-09T07:48:45.242Z",
-      "settlementPrice": "7093333810890",
-      "lockTxHash": "0x64ee4f6c10ca39c15580a0842ce2a09a6c24be9862fd320b1b9ca724de0c7553",
-      "settlementTxHash": "0x5898d9dca8ddc677d02289042c36e9afbd67b90385a7e760344b1f79e5ff13bc"
+      "joinDeadline": 1775756474,
+      "expiryAt": 1775756514,
+      "lastKnownState": "CLAIMABLE",
+      "lastSeenAt": "2026-04-09T17:53:42.124Z",
+      "lastAttemptAt": "2026-04-09T17:41:54.295Z"
     },
     "6": {
       "marketId": "6",
-      "joinDeadline": 1775676393,
-      "expiryAt": 1775676413,
-      "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T08:21:19.078Z",
-      "lastAttemptAt": "2026-04-09T06:31:56.220Z",
-      "settlementPrice": "7093333810890",
-      "lockTxHash": "0x685cc35a85e2b965453aebb1eb24d2e9480543c3fca123055cefc083f99fd20d",
-      "settlementTxHash": "0x496983d77ea25795717832c76608e434229218d98bd5fcd779aed2d6999314dd"
+      "joinDeadline": 1775756791,
+      "expiryAt": 1775757031,
+      "lastKnownState": "CLOSED",
+      "lastSeenAt": "2026-04-09T17:53:42.329Z",
+      "lastAttemptAt": "2026-04-09T17:51:18.412Z"
     },
     "7": {
       "marketId": "7",
-      "joinDeadline": 1775721907,
-      "expiryAt": 1775722107,
+      "joinDeadline": 1775756765,
+      "expiryAt": 1775756805,
       "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T08:21:19.288Z",
-      "lastAttemptAt": "2026-04-09T08:16:40.190Z",
-      "settlementPrice": "7137582535985",
-      "lockTxHash": "0xd34b8f51018dc60135608a7b6830cae9f6c1cadf8f911c7c542c57c68088a6f6",
-      "settlementTxHash": "0x4b95bd3f8b5aded43cde7862efd0f5d4952f37066c3383079c77e2d186d3e63b"
+      "lastSeenAt": "2026-04-09T17:53:42.535Z",
+      "lastAttemptAt": "2026-04-09T17:46:52.922Z"
     },
     "8": {
       "marketId": "8",
-      "joinDeadline": 1775721838,
-      "expiryAt": 1775721858,
-      "lastKnownState": "CLOSED",
-      "lastSeenAt": "2026-04-09T08:21:19.491Z",
-      "lastAttemptAt": "2026-04-09T08:16:47.248Z",
-      "settlementPrice": "7137582535985",
-      "lockTxHash": "0x3284ae7089dff56ef2937fbdb65febe56b5adf709c63bf5c9ba64cb2bdefd7c0",
-      "settlementTxHash": "0x9b7ee3cbf286a1c4b03b63fdf53566a84c3239c252cc1c4a2c748d11fcb8521d"
+      "joinDeadline": 1775756993,
+      "expiryAt": 1775757233,
+      "lastKnownState": "LOCKED",
+      "lastSeenAt": "2026-04-09T17:53:42.976Z",
+      "lastAttemptAt": "2026-04-09T17:53:42.976Z"
     },
     "9": {
       "marketId": "9",
-      "joinDeadline": 1775722743,
-      "expiryAt": 1775722943,
-      "lastKnownState": "LOCKED",
-      "lastSeenAt": "2026-04-09T08:21:19.837Z",
-      "lastAttemptAt": "2026-04-09T08:19:16.993Z",
-      "lockTxHash": "0xedb68a3972a4efae8864c7c54540ef4ab29833b270ead157d54325dbe821b854"
+      "joinDeadline": 1775756966,
+      "expiryAt": 1775757006,
+      "lastKnownState": "CLAIMABLE",
+      "lastSeenAt": "2026-04-09T17:53:43.166Z",
+      "lastAttemptAt": "2026-04-09T17:50:28.075Z"
     },
     "10": {
       "marketId": "10",
-      "joinDeadline": 1775722664,
-      "expiryAt": 1775722684,
-      "lastKnownState": "CLAIMABLE",
-      "lastSeenAt": "2026-04-09T08:21:20.191Z",
-      "lastAttemptAt": "2026-04-09T08:18:16.986Z",
-      "settlementPrice": "7137582535985",
-      "lockTxHash": "0x28439c56db85d16f091d3f2b8f1788b8f990a3ed03d65f9735f41fb7a4dce8bd",
-      "settlementTxHash": "0x590d4fc0c20c39da40b6e1d1a47b6548920d063a6b45f201e58b7e81f6bd71f8"
+      "joinDeadline": 1775756974,
+      "expiryAt": 1775757014,
+      "lastKnownState": "CLOSED",
+      "lastSeenAt": "2026-04-09T17:53:43.353Z",
+      "lastAttemptAt": "2026-04-09T17:50:39.855Z"
     }
   }
 }

@@ -4,20 +4,24 @@
  * Polls all open and locked markets and takes the appropriate action:
  *
  *   OPEN  + joiningWindowEnd elapsed  → lockMarket(marketId)
- *   LOCKED + expiryAt elapsed         → settlementEngine.settle(marketId)
+ *   LOCKED + expiryAt elapsed         → (force-publish price) → settlementEngine.settle(marketId)
  *
  * Settlement reads the price from BitdrumPriceAdapter (no oracle data param).
+ * Before calling settle(), we force-publish a fresh price round so that the
+ * adapter's latest round timestamp is >= market.expiryAt — required by the
+ * settlement contract. Without this, the settlement reverts with SettlementPriceTooEarly.
+ *
  * Idempotency: skips markets already in a terminal or wrong state.
  * Checkpoints: persists per-market state to disk so restarts don't lose context.
  */
 
-import { Contract, JsonRpcProvider, Wallet } from 'ethers';
+import { Contract } from 'ethers';
 import { loadKeeperState, saveKeeperState, upsertMarketState } from './keeperState';
+import { publishPriceOnce } from './pricePublisher';
+import { getSigner } from './client';
 
-const SOMNIA_RPC_URL             = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
 const PREDICTION_MARKET_ADDRESS  = process.env.PREDICTION_MARKET_ADDRESS || '';
 const SETTLEMENT_ENGINE_ADDRESS  = process.env.SETTLEMENT_ENGINE_ADDRESS || '';
-const KEEPER_PRIVATE_KEY         = process.env.KEEPER_PRIVATE_KEY || '';
 
 const MARKET_STATE = {
   NONE:      0,
@@ -46,18 +50,15 @@ type MarketData = {
   duration: bigint;
 };
 
-let provider: JsonRpcProvider | null = null;
-let signer: Wallet | null = null;
 let marketContract: Contract | null = null;
 let settlementContract: Contract | null = null;
 
 function ensureContracts() {
   if (!marketContract || !settlementContract) {
-    if (!PREDICTION_MARKET_ADDRESS || !SETTLEMENT_ENGINE_ADDRESS || !KEEPER_PRIVATE_KEY) {
-      throw new Error('[MarketLifecycle] PREDICTION_MARKET_ADDRESS, SETTLEMENT_ENGINE_ADDRESS, or KEEPER_PRIVATE_KEY is missing');
+    if (!PREDICTION_MARKET_ADDRESS || !SETTLEMENT_ENGINE_ADDRESS) {
+      throw new Error('[MarketLifecycle] PREDICTION_MARKET_ADDRESS or SETTLEMENT_ENGINE_ADDRESS is missing');
     }
-    provider           = new JsonRpcProvider(SOMNIA_RPC_URL);
-    signer             = new Wallet(KEEPER_PRIVATE_KEY, provider);
+    const signer       = getSigner();
     marketContract     = new Contract(PREDICTION_MARKET_ADDRESS, MARKET_ABI, signer);
     settlementContract = new Contract(SETTLEMENT_ENGINE_ADDRESS, SETTLEMENT_ABI, signer);
   }
@@ -74,6 +75,13 @@ function marketStateLabel(state: number) {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Workaround for ethers Result type
+type MarketContract = Contract;
+
 async function processMarket(
   id: number,
   market: MarketContract,
@@ -81,7 +89,6 @@ async function processMarket(
   nowSeconds: number,
 ): Promise<string | null> {
   const raw = await market.getMarket(id);
-  // Ethers Result: accept both array-indexed and named access.
   const data: MarketData = {
     marketId:         raw.marketId ?? raw[0],
     state:            Number(raw.state ?? raw[20]),
@@ -105,6 +112,26 @@ async function processMarket(
   }
 
   if (state === MARKET_STATE.LOCKED && nowSeconds >= expiryAt) {
+    // Force-post a fresh price round BEFORE settling.
+    //
+    // SettlementEngineV2 requires: adapter.latestRound.timestamp >= market.expiryAt
+    // Without this step, the adapter might still hold a round posted before expiry,
+    // causing the settlement contract to revert with SettlementPriceTooEarly.
+    // Force=true bypasses the minimum-interval guard in the publisher.
+    console.log(JSON.stringify({ event: 'pre_settle_publish', marketId: id, expiryAt }));
+    try {
+      await publishPriceOnce(true);
+      // Wait for the publish tx to land and be readable by the next RPC call.
+      await sleep(4000);
+    } catch (publishErr: any) {
+      console.warn(JSON.stringify({
+        event: 'pre_settle_publish_warn',
+        marketId: id,
+        message: publishErr?.message || String(publishErr),
+      }));
+      // Continue anyway — the routine publisher may have already posted a fresh round.
+    }
+
     console.log(JSON.stringify({ event: 'settle_attempt', marketId: id, expiryAt }));
     const tx = await settlement.settle(id);
     await tx.wait();
@@ -114,9 +141,6 @@ async function processMarket(
 
   return stateLabel;
 }
-
-// Workaround for ethers Result type
-type MarketContract = Contract;
 
 export async function runMarketLifecycleOnce(): Promise<void> {
   const keeperState = await loadKeeperState();

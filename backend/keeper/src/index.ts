@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 import path from 'path';
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+// Load from current working directory or specific path
+dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { startPricePublisher, PUBLISH_INTERVAL_MS } from './services/pricePublisher';
 import { startMarketLifecycle } from './services/marketLifecycle';

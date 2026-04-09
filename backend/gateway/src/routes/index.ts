@@ -434,7 +434,7 @@ router.get('/markets/:market_id', async (req, res) => {
 });
 
 // 2. AI Signal (Gated)
-router.get('/signal/preview', checkSubscription, async (req, res) => {
+router.get('/signal/preview', async (req, res) => {
   const direction = String(req.query.direction || 'UP');
   const stake = String(req.query.stake || '0');
   const durationSeconds = Number(req.query.durationSeconds || req.query.duration_seconds || 300);
@@ -462,7 +462,7 @@ router.get('/signal/preview', checkSubscription, async (req, res) => {
   }
 });
 
-router.get('/signal/:market_id', checkSubscription, async (req, res) => {
+router.get('/signal/:market_id', async (req, res) => {
   const { market_id } = req.params;
 
   try {

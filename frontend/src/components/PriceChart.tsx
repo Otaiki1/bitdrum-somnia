@@ -11,70 +11,174 @@ const ExecutionCard: React.FC<{ execution: TradeExecutionRecord }> = ({ executio
   const [progress, setProgress] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number>(execution.timeframeSeconds);
   const isUp = execution.direction === 'UP';
+  const isPending = execution.status === 'submitted';
+  const isFailed = execution.status === 'failed';
+  const isExpired = timeLeft <= 0 && execution.status === 'confirmed';
 
   useEffect(() => {
-    if (execution.status !== 'confirmed') return;
+    // Start countdown immediately from submission — not waiting for confirmation.
+    const startTime = execution.timestamp;
 
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - execution.timestamp) / 1000;
+    const tick = () => {
+      const elapsed = (Date.now() - startTime) / 1000;
       const p = Math.min((elapsed / execution.timeframeSeconds) * 100, 100);
       setProgress(p);
       setTimeLeft(Math.max(execution.timeframeSeconds - elapsed, 0));
-      
-      if (p >= 100) clearInterval(interval);
-    }, 100);
+    };
 
-    return () => clearInterval(interval);
-  }, [execution.timestamp, execution.timeframeSeconds, execution.status]);
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [execution.timestamp, execution.timeframeSeconds]);
+
+  const urgency = timeLeft < 10 && timeLeft > 0;
+  const dirColor = isUp ? 'var(--state-up)' : 'var(--state-down)';
+  const progressColor = urgency
+    ? 'var(--state-down)'
+    : progress > 60
+      ? '#f5b942'
+      : dirColor;
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = Math.floor(timeLeft % 60);
+  const timeDisplay = mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
 
   return (
-    <div className="group relative overflow-hidden rounded-[1.65rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-5 transition-all hover:border-[rgba(245,185,66,0.18)]">
-      {/* Progress Bar Background */}
-      <div className="absolute bottom-0 left-0 h-1 w-full bg-[rgba(255,255,255,0.02)]">
-        <div 
-          className={`h-full transition-all duration-100 ${isUp ? 'bg-[var(--state-up)] shadow-[0_0_8px_var(--state-up)]' : 'bg-[var(--state-down)] shadow-[0_0_8px_var(--state-down)]'}`}
-          style={{ width: `${progress}%` }}
+    <div
+      className="group relative overflow-hidden rounded-[1.65rem] border transition-all duration-300"
+      style={{
+        borderColor: isPending
+          ? 'rgba(245,185,66,0.2)'
+          : isFailed
+            ? 'rgba(220,38,38,0.2)'
+            : `color-mix(in srgb, ${dirColor} 18%, transparent)`,
+        background: isPending
+          ? 'radial-gradient(circle at top, rgba(245,185,66,0.05), transparent 60%), rgba(255,255,255,0.02)'
+          : `radial-gradient(circle at top left, color-mix(in srgb, ${dirColor} 8%, transparent), transparent 55%), rgba(255,255,255,0.025)`,
+        boxShadow: isPending
+          ? '0 0 0 1px rgba(245,185,66,0.08)'
+          : isExpired
+            ? `0 0 20px color-mix(in srgb, ${dirColor} 12%, transparent)`
+            : 'none',
+      }}
+    >
+      {/* Animated glow border while pending */}
+      {isPending && (
+        <div className="absolute inset-0 rounded-[1.65rem] animate-pulse" style={{ boxShadow: 'inset 0 0 0 1px rgba(245,185,66,0.15)' }} />
+      )}
+
+      {/* Progress fill background */}
+      <div
+        className="absolute inset-0 rounded-[1.65rem] transition-all duration-300"
+        style={{
+          background: `linear-gradient(90deg, color-mix(in srgb, ${progressColor} 6%, transparent) ${progress}%, transparent ${progress}%)`,
+          opacity: isPending ? 0.4 : 1,
+        }}
+      />
+
+      {/* Bottom progress bar */}
+      <div className="absolute bottom-0 left-0 h-[2px] w-full overflow-hidden rounded-b-[1.65rem] bg-[rgba(255,255,255,0.04)]">
+        <div
+          className="h-full rounded-full transition-all duration-200"
+          style={{
+            width: `${progress}%`,
+            background: `linear-gradient(90deg, ${progressColor}, color-mix(in srgb, ${progressColor} 60%, white))`,
+            boxShadow: `0 0 8px ${progressColor}`,
+          }}
         />
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className={`flex h-7 w-7 items-center justify-center rounded-full ${isUp ? 'bg-[var(--state-up)]/10 text-[var(--state-up)]' : 'bg-[var(--state-down)]/10 text-[var(--state-down)]'}`}>
-            {isUp ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+      <div className="relative p-5">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full"
+              style={{
+                background: `color-mix(in srgb, ${dirColor} 12%, transparent)`,
+                boxShadow: `0 0 12px color-mix(in srgb, ${dirColor} 20%, transparent)`,
+              }}
+            >
+              {isUp
+                ? <ArrowUpRight className="h-4 w-4" style={{ color: dirColor }} />
+                : <ArrowDownRight className="h-4 w-4" style={{ color: dirColor }} />}
+            </div>
+            <div>
+              <div className="text-[0.58rem] uppercase tracking-[0.28em] text-[var(--text-muted)]">
+                {execution.kind === 'OPEN' ? 'Primary Call' : 'Joined'}
+              </div>
+              <div className="font-heading text-base font-bold tracking-tight" style={{ color: dirColor }}>
+                {execution.direction}
+              </div>
+            </div>
           </div>
-          <span className="text-[0.62rem] font-black uppercase tracking-[0.28em] text-[var(--text-muted)]">
-            {execution.direction}
+
+          <span
+            className={`rounded-full border px-2.5 py-1 text-[0.55rem] font-bold uppercase tracking-[0.22em] ${
+              execution.status === 'confirmed'
+                ? 'border-[rgba(22,163,74,0.2)] bg-[rgba(22,163,74,0.08)] text-[var(--state-up)]'
+                : isFailed
+                  ? 'border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.08)] text-[var(--state-down)]'
+                  : 'border-[rgba(245,185,66,0.2)] bg-[rgba(245,185,66,0.06)] text-[var(--accent-gold)] animate-pulse'
+            }`}
+          >
+            {isPending ? 'Pending' : isFailed ? 'Failed' : isExpired ? 'Settling' : 'Active'}
           </span>
         </div>
-        <span
-          className={`rounded-full border px-2.5 py-1 text-[0.58rem] font-bold uppercase tracking-[0.22em] ${
-            execution.status === 'confirmed'
-              ? 'border-[rgba(22,163,74,0.2)] bg-[rgba(22,163,74,0.1)] text-[var(--state-up)]'
-              : execution.status === 'failed'
-                ? 'border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.12)] text-[var(--state-down)]'
-                : 'border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)] text-[var(--accent-gold)] animate-pulse'
-          }`}
-        >
-          {execution.status}
-        </span>
-      </div>
 
-      <div className="mt-5 flex items-end justify-between">
-        <div>
-          <div className="text-[1.2rem] font-semibold tracking-tight text-[var(--text-primary)]">
-            {execution.stake} <span className="text-[0.68rem] font-normal text-[var(--text-muted)] tracking-widest">STT</span>
+        {/* Middle stats */}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-[0.55rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">Stake</div>
+            <div className="mt-1 font-mono text-lg font-semibold text-[var(--text-primary)]">
+              {execution.stake}
+              <span className="ml-1 text-[0.6rem] font-normal opacity-50">STT</span>
+            </div>
           </div>
-          <div className="mt-1 text-[0.6rem] uppercase tracking-widest text-[var(--text-muted)]">
-            {execution.kind === 'OPEN' ? 'Primary Call' : 'Satellite Join'}
-          </div>
+          {execution.entryPrice ? (
+            <div>
+              <div className="text-[0.55rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">Entry</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-[var(--text-primary)]">
+                ${execution.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[0.55rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">Period</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-[var(--text-primary)]">
+                {execution.timeframeSeconds >= 60 ? `${execution.timeframeSeconds / 60}m` : `${execution.timeframeSeconds}s`}
+              </div>
+            </div>
+          )}
         </div>
-        
-        <div className="text-right">
-          <div className="font-mono text-sm font-bold text-[var(--text-primary)]">
-            {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toFixed(0).padStart(2, '0')}
+
+        {/* Countdown */}
+        {!isFailed && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-[0.55rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">
+              {isExpired ? 'Awaiting settlement' : isPending ? 'Confirming…' : 'Time left'}
+            </div>
+            <div
+              className={`font-mono text-xl font-bold tabular-nums ${urgency ? 'animate-pulse' : ''}`}
+              style={{ color: isExpired ? 'var(--text-muted)' : urgency ? 'var(--state-down)' : 'var(--text-primary)' }}
+            >
+              {isExpired ? '—' : timeDisplay}
+            </div>
           </div>
-          <div className="text-[0.55rem] uppercase tracking-widest text-[var(--text-muted)]">Settling</div>
-        </div>
+        )}
+
+        {/* Tx link */}
+        {execution.txHash && (
+          <a
+            href={execution.explorerUrl || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex items-center gap-1.5 text-[0.55rem] uppercase tracking-[0.22em] text-[var(--text-muted)] transition hover:text-[var(--text-secondary)]"
+          >
+            <ExternalLink className="h-3 w-3" />
+            {execution.txHash.slice(0, 8)}…{execution.txHash.slice(-6)}
+          </a>
+        )}
       </div>
     </div>
   );

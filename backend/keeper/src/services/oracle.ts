@@ -3,18 +3,18 @@ import { createPublicClient, defineChain, fallback, http, parseAbi } from 'viem'
 export interface OraclePriceSnapshot {
   price: bigint;
   timestamp: number;
-  source: 'dia' | 'static';
+  source: 'binance' | 'dia' | 'static';
 }
 
 // DIA Oracle contract addresses on Somnia
-// Main oracle: getValue(key) → (uint128 price, uint128 timestamp)
 const DIA_ORACLE_ADDRESS_MAINNET = '0xbA0E0750A56e995506CA458b2BdD752754CF39C4';
 const DIA_ORACLE_ADDRESS_TESTNET = '0x9206296Ea3aEE3E6bdC07F7AaeF14DfCf33d865D';
 
 const SOMNIA_RPC_URL = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
 const SOMNIA_RPC_FALLBACK_URL = process.env.SOMNIA_RPC_FALLBACK_URL || 'https://rpc.somnia.network';
 const SOMNIA_CHAIN_ID = Number(process.env.SOMNIA_CHAIN_ID || 50312);
-const ORACLE_MAX_AGE_SECONDS = Number(process.env.ORACLE_MAX_AGE_SECONDS || 300);
+// DIA is only used as a secondary fallback — freshness requirement relaxed.
+const DIA_MAX_AGE_SECONDS = Number(process.env.ORACLE_MAX_AGE_SECONDS || 300);
 const getStaticOraclePrice = () => process.env.ORACLE_STATIC_PRICE || '7137582535985';
 
 const DIA_ABI = parseAbi([
@@ -59,6 +59,35 @@ function getOracleAddress(): `0x${string}` {
   return (SOMNIA_CHAIN_ID === 5031 ? DIA_ORACLE_ADDRESS_MAINNET : DIA_ORACLE_ADDRESS_TESTNET) as `0x${string}`;
 }
 
+/**
+ * Primary: fetch BTC/USD from Binance REST API.
+ */
+async function fetchBinancePrice(): Promise<OraclePriceSnapshot> {
+  try {
+    const response = await fetch(
+      'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT'
+    );
+
+    if (!response.ok) {
+      throw new Error(`Binance HTTP ${response.status}`);
+    }
+
+    const data = await response.json() as { symbol: string; price: string };
+    const priceUsd = parseFloat(data.price);
+
+    if (!priceUsd || priceUsd <= 0) {
+      throw new Error('Invalid price from Binance');
+    }
+
+    const price = BigInt(Math.round(priceUsd * 1e8));
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    return { price, timestamp, source: 'binance' };
+  } catch (err: any) {
+    throw new Error(`Binance error: ${err?.message || String(err)}`);
+  }
+}
+
 async function fetchDiaOnchain(): Promise<OraclePriceSnapshot> {
   const [price, timestamp] = await publicClient.readContract({
     address: getOracleAddress(),
@@ -73,42 +102,65 @@ async function fetchDiaOnchain(): Promise<OraclePriceSnapshot> {
 
   const ts = Number(timestamp);
   const age = Math.floor(Date.now() / 1000) - ts;
-  if (age > ORACLE_MAX_AGE_SECONDS) {
+  if (age > DIA_MAX_AGE_SECONDS) {
     throw new Error(`[Oracle] DIA price is stale (${age}s old)`);
   }
 
   return { price, timestamp: ts, source: 'dia' };
 }
 
+/**
+ * Static fallback with "Mock Jitter" to prevent constant draws on testnet.
+ * It adds a random drift of up to +/- 50 bps (0.5%) to the static price.
+ */
 function staticSnapshot(): OraclePriceSnapshot | null {
-  const staticPrice = getStaticOraclePrice();
-  if (!staticPrice) return null;
+  const staticPriceStr = getStaticOraclePrice();
+  if (!staticPriceStr) return null;
+
+  let price = BigInt(staticPriceStr);
+
+  // Add jitter: +/- 0.5%
+  const jitterBps = Math.floor(Math.random() * 101) - 50; // -50 to +50
+  const jitterAmount = (price * BigInt(Math.abs(jitterBps))) / 10000n;
+
+  if (jitterBps > 0) {
+    price += jitterAmount;
+  } else {
+    price -= jitterAmount;
+  }
+
   return {
-    price: BigInt(staticPrice),
+    price,
     timestamp: Math.floor(Date.now() / 1000),
     source: 'static',
   };
 }
 
 /**
- * Fetch the current BTC/USD price from the DIA on-chain oracle.
- * Falls back to ORACLE_STATIC_PRICE if the RPC call fails.
- * DIA price format: 8-decimal integer (same as Pyth on the frontend).
+ * Fetch the current BTC/USD price.
+ * Priority: Binance REST → DIA on-chain → ORACLE_STATIC_PRICE (with jitter).
  */
 export async function fetchOraclePrice(): Promise<OraclePriceSnapshot> {
+  // 1. Binance REST
   try {
-    return await fetchDiaOnchain();
-  } catch (err) {
-    console.warn('[Oracle] DIA on-chain read failed:', (err as Error).message);
+    return await fetchBinancePrice();
+  } catch (err: any) {
+    console.warn('[Oracle] Binance failed:', err.message);
   }
 
+  // 2. DIA on-chain
+  try {
+    return await fetchDiaOnchain();
+  } catch (err: any) {
+    console.warn('[Oracle] DIA on-chain failed:', err.message);
+  }
+
+  // 3. Static fallback with jitter
   const snapshot = staticSnapshot();
   if (snapshot) {
-    console.warn('[Oracle] Using static price fallback');
+    console.warn('[Oracle] Using jitter-mocked static price');
     return snapshot;
   }
 
-  throw new Error(
-    '[Oracle] No price source available. Set ORACLE_STATIC_PRICE as fallback.',
-  );
+  throw new Error('[Oracle] No price source available');
 }
