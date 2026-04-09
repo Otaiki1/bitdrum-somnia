@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { formatUnits } from 'viem';
 import {
-  ExternalLink,
-  Waves,
   X,
 } from 'lucide-react';
 import { PriceChart, type TradeMarker } from './PriceChart';
@@ -21,6 +20,7 @@ import {
   type MarketRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
+import { readSttBalance } from '../utils/contracts';
 import { SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
 import { usePositions } from '../hooks/usePositions';
 
@@ -164,13 +164,33 @@ export const TradingDashboard = () => {
   const [showAccount, setShowAccount] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<MarketRecord | null>(null);
   const [claimingMarketId, setClaimingMarketId] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const [currentBtcPrice, setCurrentBtcPrice] = useState<number | null>(null);
   const [pendingTrades, setPendingTrades] = useState<TradeExecutionRecord[]>([]);
   const [outcomeModal, setOutcomeModal] = useState<{ outcome: 'WIN' | 'LOSS' | 'DRAW'; position: any } | null>(null);
+  const [selectedTab, setSelectedTab] = useState<'markets' | 'positions'>('markets');
+  const [isLockedIn, setIsLockedIn] = useState(false);
+  const [sttBalance, setSttBalance] = useState<string | null>(null);
   const seenOutcomes = useRef<Set<string>>(new Set());
 
   const viewerAddress = address ?? '';
   const { positions, summary: positionSummary, isLoading: positionsLoading } = usePositions(viewerAddress || null);
+
+  const refreshBalance = useCallback(async () => {
+    if (!address) { setSttBalance(null); return; }
+    try {
+      const raw = await readSttBalance(address as `0x${string}`);
+      setSttBalance(Number(formatUnits(raw, 18)).toFixed(3));
+    } catch {
+      // ignore
+    }
+  }, [address]);
+
+  useEffect(() => {
+    refreshBalance();
+    const id = setInterval(refreshBalance, 5_000);
+    return () => clearInterval(id);
+  }, [refreshBalance]);
 
   useEffect(() => {
     for (const pos of positions) {
@@ -250,12 +270,22 @@ export const TradingDashboard = () => {
   const handleClaim = async (marketId: string) => {
     if (!wallet) return;
     setClaimingMarketId(marketId);
+    setClaimError(null);
     try {
       const tx = await claimMarket({ wallet, marketId });
       await tx.wait();
-      await queryClient.invalidateQueries({ queryKey: ['positions', viewerAddress] });
-      await queryClient.invalidateQueries({ queryKey: ['feed'] });
-      await queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['positions', viewerAddress] }),
+        queryClient.invalidateQueries({ queryKey: ['feed'] }),
+        queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
+      ]);
+      // Refresh balance immediately after successful claim
+      await refreshBalance();
+    } catch (err: any) {
+      const msg: string = err?.shortMessage ?? err?.message ?? 'Claim failed';
+      // Extract the human-readable revert reason if present
+      const reasonMatch = msg.match(/reverted with the following reason:\s*([^\n]+)/i);
+      setClaimError(reasonMatch ? reasonMatch[1].trim() : msg);
     } finally {
       setClaimingMarketId(null);
     }
@@ -323,29 +353,120 @@ export const TradingDashboard = () => {
         </div>
       ) : null}
 
-      <div className={`grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px] ${showAccount ? 'blur-sm opacity-35' : ''}`}>
+      {isLockedIn && (
+        <div className="fixed inset-0 z-[9999] bg-[var(--bg-primary)] p-4 sm:p-6 lg:p-8">
+          <div className="relative h-full w-full overflow-hidden rounded-[2.5rem] border border-[rgba(245,185,66,0.12)] bg-[rgba(10,10,10,0.8)] shadow-[0_0_100px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+            {/* Header Ticker */}
+            <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.4)] px-8 py-4 backdrop-blur-md">
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 animate-pulse rounded-full bg-[var(--state-up)] shadow-[0_0_12px_var(--state-up)]" />
+                  <span className="text-[0.7rem] font-bold uppercase tracking-[0.3em] text-[var(--text-primary)]">Terminal Active</span>
+                </div>
+                <div className="h-4 w-px bg-[rgba(255,255,255,0.1)]" />
+                <div className="flex gap-6">
+                  <div className="flex flex-col">
+                    <span className="text-[0.55rem] uppercase tracking-widest text-[var(--text-muted)]">Bitcoin Pulse</span>
+                    <span className="font-mono text-lg font-bold text-[var(--accent-gold)]">
+                      ${currentBtcPrice?.toLocaleString() || '---'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[0.55rem] uppercase tracking-widest text-[var(--text-muted)]">Live PnL</span>
+                    <span className={`font-mono text-lg font-bold ${Number(livePnL) >= 0 ? 'text-[var(--state-up)]' : 'text-[var(--state-down)]'}`}>
+                      {livePnL} STT
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsLockedIn(false)}
+                className="group flex items-center gap-3 rounded-full border border-[rgba(220,38,38,0.2)] bg-[rgba(220,38,38,0.05)] px-6 py-2 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--state-down)] transition-all hover:bg-[rgba(220,38,38,1)] hover:text-white"
+              >
+                Abort Focus
+              </button>
+            </div>
+
+            {/* Immersive Layout */}
+            <div className="grid h-full w-full grid-cols-1 pt-20 lg:grid-cols-[1fr_440px]">
+              <div className="relative min-h-0 w-full p-4 lg:p-8">
+                <PriceChart
+                  tradeMarkers={tradeMarkers}
+                  recentExecutions={pendingTrades}
+                  onPriceUpdate={setCurrentBtcPrice}
+                />
+              </div>
+
+              <div className="border-l border-[rgba(255,255,255,0.05)] bg-[rgba(0,0,0,0.2)] p-4 lg:p-8 overflow-y-auto">
+                <div className="flex flex-col gap-6">
+                  <div className="rounded-[2rem] border border-[rgba(245,185,66,0.15)] bg-[rgba(245,185,66,0.03)] p-6">
+                    <h3 className="text-[0.68rem] uppercase tracking-[0.4em] text-[var(--accent-gold)]">Command Module</h3>
+                    <p className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">Execute fresh call</p>
+                  </div>
+                  
+                  <TradePanel
+                    selectedMarket={selectedMarket}
+                    onClearSelection={() => setSelectedMarket(null)}
+                    currentPrice={currentBtcPrice}
+                    onTradeSubmitted={handleTradeSubmitted}
+                  />
+                  
+                  <div className="rounded-[2rem] border border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)] p-6">
+                    <h3 className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--text-muted)] italic">Core Resonance</h3>
+                    <div className="mt-4 flex flex-col gap-3">
+                      {positions.slice(0, 3).map((pos, i) => (
+                        <div key={i} className="flex items-center justify-between gap-3 text-xs">
+                          <span className={pos.direction === 'UP' ? 'text-[var(--state-up)]' : 'text-[var(--state-down)]'}>{pos.direction}</span>
+                          <span className="font-mono text-[var(--text-secondary)]">{formatTokenAmount(pos.stake_amount)} STT</span>
+                          <span className="text-[var(--text-muted)] italic">#{pos.market_id}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px] ${showAccount || isLockedIn ? 'hidden' : ''}`}>
         <section className="flex min-w-0 flex-col gap-6">
-          {walletError ? (
+          {walletError && (
             <div className="rounded-[1.55rem] border border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)] px-5 py-4 text-sm text-[var(--text-primary)]">
               {walletError}
             </div>
-          ) : null}
+          )}
 
-          <Panel className="surface-lift overflow-hidden p-5 sm:p-6">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <Eyebrow accent="gold">Arena Focus</Eyebrow>
-                <h2 className="mt-3 font-heading text-[clamp(2rem,4vw,4rem)] font-semibold leading-[0.92] tracking-[-0.07em] text-[var(--text-primary)]">
-                  Live price action and execution, without the clutter.
-                </h2>
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.65rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] px-6 py-4 backdrop-blur-sm">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-[var(--state-up)] shadow-[0_0_8px_var(--state-up)]" />
+                <span className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-[var(--accent-gold)]">Arena Live</span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="hidden h-4 w-px bg-[color:var(--border-subtle)] sm:block" />
+              <div className="flex gap-4">
                 <StatPill label="Win Rate" value={`${((positionSummary?.win_rate || 0) * 100).toFixed(1)}%`} accent="gold" />
                 <StatPill label="PnL" value={`${livePnL} STT`} accent={Number(positionSummary?.resolved_pnl || 0) >= 0 ? 'success' : 'danger'} />
-                <StatPill label="BTC" value={currentBtcPrice ? `$${currentBtcPrice.toFixed(2)}` : '--'} accent="core" />
+                {authenticated && sttBalance !== null && (
+                  <StatPill label="Balance" value={`${sttBalance} STT`} accent="gold" />
+                )}
               </div>
             </div>
-          </Panel>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsLockedIn(true)}
+                className="flex items-center gap-2 rounded-full border border-[rgba(245,185,66,0.3)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--accent-gold)] transition hover:bg-[var(--accent-gold)] hover:text-black"
+              >
+                Zen Focus
+              </button>
+              <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">BTC {currentBtcPrice ? `$${currentBtcPrice.toLocaleString()}` : '--'}</span>
+              <div className="rounded-full border border-[rgba(245,185,66,0.18)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--accent-gold)]">
+                Somnia Pulse
+              </div>
+            </div>
+          </div>
 
           <PriceChart
             tradeMarkers={tradeMarkers}
@@ -353,11 +474,81 @@ export const TradingDashboard = () => {
             onPriceUpdate={setCurrentBtcPrice}
           />
 
-          <MarketFeed
-            viewerAddress={viewerAddress || undefined}
-            selectedMarketId={selectedMarket?.id}
-            onJoinMarket={setSelectedMarket}
-          />
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 border-b border-[color:var(--border-subtle)] pb-2">
+              <button
+                onClick={() => setSelectedTab('markets')}
+                className={`px-4 py-2 text-[0.68rem] uppercase tracking-[0.34em] transition ${
+                  selectedTab === 'markets' ? 'text-[var(--accent-gold)] border-b-2 border-[var(--accent-gold)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                Markets
+              </button>
+              <button
+                onClick={() => setSelectedTab('positions')}
+                className={`px-4 py-2 text-[0.68rem] uppercase tracking-[0.34em] transition ${
+                  selectedTab === 'positions' ? 'text-[var(--accent-gold)] border-b-2 border-[var(--accent-gold)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                My Positions ({positions.length})
+              </button>
+            </div>
+
+            {selectedTab === 'markets' ? (
+              <MarketFeed
+                viewerAddress={viewerAddress || undefined}
+                selectedMarketId={selectedMarket?.id}
+                onJoinMarket={setSelectedMarket}
+              />
+            ) : (
+              <div className="grid gap-3">
+                {claimError && (
+                  <div className="rounded-[1.35rem] border border-[rgba(220,38,38,0.25)] bg-[rgba(220,38,38,0.08)] px-5 py-4 text-sm text-[var(--state-down)]">
+                    <span className="font-semibold">Claim failed: </span>{claimError}
+                    <button onClick={() => setClaimError(null)} className="ml-3 underline opacity-70 hover:opacity-100">Dismiss</button>
+                  </div>
+                )}
+                {positionsLoading ? (
+                  <p className="py-10 text-center text-[0.68rem] uppercase tracking-[0.34em] text-[var(--text-muted)]">Loading positions...</p>
+                ) : positions.length === 0 ? (
+                  <p className="py-10 text-center text-[0.68rem] uppercase tracking-[0.34em] text-[var(--text-muted)]">No active positions</p>
+                ) : (
+                  positions.map((pos) => {
+                    const canClaim = (pos.status === 'WIN' || pos.status === 'DRAW') && !pos.claimed;
+                    const isClaiming = claimingMarketId === pos.market_id;
+                    return (
+                      <Panel key={`${pos.market_id}-${pos.direction}`} className="flex items-center justify-between p-4">
+                        <div className="flex items-center gap-4">
+                          <span className={`rounded-full border px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.24em] ${pos.direction === 'UP' ? 'text-[var(--state-up)] border-[var(--state-up)]/20' : 'text-[var(--state-down)] border-[var(--state-down)]/20'}`}>
+                            {pos.direction}
+                          </span>
+                          <div>
+                            <p className="font-heading text-lg tracking-tight text-[var(--text-primary)]">Market #{pos.market_id}</p>
+                            <p className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--text-muted)]">{formatTokenAmount(pos.stake_amount)} STT</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <CountdownTimer settlementDeadline={pos.settlement_deadline ? Math.floor(new Date(pos.settlement_deadline).getTime() / 1000) : null} />
+                          {canClaim && (
+                            <button
+                              disabled={isClaiming}
+                              onClick={() => void handleClaim(pos.market_id)}
+                              className="rounded-full border border-[rgba(245,185,66,0.3)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.2em] text-[var(--accent-gold)] transition hover:bg-[var(--accent-gold)] hover:text-black disabled:opacity-50"
+                            >
+                              {isClaiming ? 'Claiming…' : pos.status === 'DRAW' ? 'Refund' : 'Claim'}
+                            </button>
+                          )}
+                          {pos.claimed && (
+                            <span className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--text-muted)]">Claimed</span>
+                          )}
+                        </div>
+                      </Panel>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
         </section>
 
         <aside className="flex min-w-0 flex-col gap-6">
@@ -367,20 +558,6 @@ export const TradingDashboard = () => {
             currentPrice={currentBtcPrice}
             onTradeSubmitted={handleTradeSubmitted}
           />
-          <Panel className="surface-lift p-5">
-            <Eyebrow accent="gold">Next Steps</Eyebrow>
-            <div className="mt-4 grid gap-3">
-              <a href="/signals" className="rounded-[1.25rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4 text-sm text-[var(--text-primary)] transition hover:border-[rgba(59,130,246,0.18)]">
-                Open The Core
-              </a>
-              <a href="/portfolio" className="rounded-[1.25rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4 text-sm text-[var(--text-primary)] transition hover:border-[rgba(245,185,66,0.18)]">
-                Review Portfolio
-              </a>
-              <a href="/leaderboard" className="rounded-[1.25rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4 text-sm text-[var(--text-primary)] transition hover:border-[rgba(245,185,66,0.18)]">
-                Study the Leaderboard
-              </a>
-            </div>
-          </Panel>
         </aside>
       </div>
     </div>

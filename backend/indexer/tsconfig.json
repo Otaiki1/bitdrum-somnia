@@ -5,10 +5,11 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "outDir": "dist",
+    "skipLibCheck": true,
     "paths": {
       "@/*": ["./*"]
     }
   },
-  "include": ["**/*.ts"],
+  "include": ["src/**/*.ts", "lib/**/*.ts", "drizzle.config.ts"],
   "exclude": ["node_modules", "dist", ".apibara"]
 }

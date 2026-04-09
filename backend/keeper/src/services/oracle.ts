@@ -14,7 +14,8 @@ const DIA_ORACLE_ADDRESS_TESTNET = '0x9206296Ea3aEE3E6bdC07F7AaeF14DfCf33d865D';
 const SOMNIA_RPC_URL = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
 const SOMNIA_RPC_FALLBACK_URL = process.env.SOMNIA_RPC_FALLBACK_URL || 'https://rpc.somnia.network';
 const SOMNIA_CHAIN_ID = Number(process.env.SOMNIA_CHAIN_ID || 50312);
-const STATIC_ORACLE_PRICE = process.env.ORACLE_STATIC_PRICE || '';
+const ORACLE_MAX_AGE_SECONDS = Number(process.env.ORACLE_MAX_AGE_SECONDS || 300);
+const getStaticOraclePrice = () => process.env.ORACLE_STATIC_PRICE || '7137582535985';
 
 const DIA_ABI = parseAbi([
   'function getValue(string key) external view returns (uint128 price, uint128 timestamp)',
@@ -72,7 +73,7 @@ async function fetchDiaOnchain(): Promise<OraclePriceSnapshot> {
 
   const ts = Number(timestamp);
   const age = Math.floor(Date.now() / 1000) - ts;
-  if (age > 300) {
+  if (age > ORACLE_MAX_AGE_SECONDS) {
     throw new Error(`[Oracle] DIA price is stale (${age}s old)`);
   }
 
@@ -80,9 +81,10 @@ async function fetchDiaOnchain(): Promise<OraclePriceSnapshot> {
 }
 
 function staticSnapshot(): OraclePriceSnapshot | null {
-  if (!STATIC_ORACLE_PRICE) return null;
+  const staticPrice = getStaticOraclePrice();
+  if (!staticPrice) return null;
   return {
-    price: BigInt(STATIC_ORACLE_PRICE),
+    price: BigInt(staticPrice),
     timestamp: Math.floor(Date.now() / 1000),
     source: 'static',
   };

@@ -4,20 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "apibara dev --indexers bitdrum",
-    "build": "apibara build",
-    "start": "apibara start --indexer bitdrum",
+    "dev": "node --watch src/index.js",
+    "build": "tsc",
+    "start": "node dist/src/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "@apibara/plugin-drizzle": "next",
-    "@apibara/starknet": "next",
-    "apibara": "next",
+    "dotenv": "^17.4.1",
     "drizzle-orm": "^0.40.1",
-    "ethers": "file:../gateway/node_modules/ethers",
     "pg": "^8.14.1",
-    "starknet": "^9.4.2"
+    "viem": "~2.37.8"
   },
   "devDependencies": {
     "@types/pg": "^8.11.14",

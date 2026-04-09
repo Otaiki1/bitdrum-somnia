@@ -126,17 +126,28 @@ a {
   position: relative;
   display: grid;
   place-items: center;
-  width: min(18rem, 100%);
+  width: min(19rem, 100%);
   aspect-ratio: 1;
   border-radius: 999px;
-  padding: 1.4rem;
-  background:
-    radial-gradient(circle at center, rgba(5, 5, 5, 0.4) 32%, transparent 34%),
-    conic-gradient(from 210deg, rgba(34, 211, 238, 0.08), rgba(59, 130, 246, 0.85), rgba(245, 185, 66, 0.58), rgba(34, 211, 238, 0.08));
-  animation: slow-spin 9s linear infinite;
+  padding: 1.8rem;
+  background: radial-gradient(circle at center, rgba(5, 5, 5, 0.4) 32%, transparent 35%);
   box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.14),
-    0 0 48px rgba(59, 130, 246, 0.22);
+    0 0 0 1px rgba(59, 130, 246, 0.12),
+    0 0 64px rgba(59, 130, 246, 0.14);
+}
+
+.core-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  padding: 2px;
+  background: conic-gradient(from 210deg, rgba(34, 211, 238, 0.1), rgba(59, 130, 246, 0.9), rgba(245, 185, 66, 0.6), rgba(34, 211, 238, 0.1));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: slow-spin 8s linear infinite;
 }
 
 .core-ring::before {
@@ -158,8 +169,67 @@ a {
   height: 100%;
   border-radius: 999px;
   background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.08), transparent 40%),
-    linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(5, 5, 5, 0.96));
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 45%),
+    linear-gradient(180deg, #0d0d0d 0%, #050505 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6);
+}
+
+.metrics-panel {
+  display: flex;
+  gap: 1px;
+  border-radius: 2rem;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.015);
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.5);
+}
+
+.metrics-panel__item {
+  flex: 1;
+  position: relative;
+  padding: 1.6rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.metrics-panel__item:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.metrics-panel__divider {
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+.meter-bar {
+  height: 3px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.meter-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 1s ease-out;
+}
+
+.glow-aura {
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(circle at center, var(--aura-color), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.metrics-panel__item:hover .glow-aura {
+  opacity: 0.08;
 }
 
 .pulse-bar {

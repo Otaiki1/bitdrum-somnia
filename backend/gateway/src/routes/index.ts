@@ -45,6 +45,16 @@ function bigintFromNumeric(value: string | null | undefined) {
   return BigInt(value || '0');
 }
 
+function parseStakeToWei(stake: string): bigint {
+  if (!stake || stake === '0') return 0n;
+  if (stake.includes('.')) {
+    const [whole, frac = ''] = stake.split('.');
+    const fracPadded = frac.padEnd(18, '0').slice(0, 18);
+    return BigInt(whole || '0') * 10n ** 18n + BigInt(fracPadded);
+  }
+  return BigInt(stake);
+}
+
 function toUnixSeconds(value: string | Date | null | undefined) {
   if (!value) {
     return null;
@@ -318,7 +328,7 @@ async function getPreviewContext(direction: string, stake: string, durationSecon
     `,
   );
 
-  const previewStake = bigintFromNumeric(stake);
+  const previewStake = parseStakeToWei(stake);
   const currentLongPool = marketRows.reduce((sum, row) => sum + bigintFromNumeric(row.long_pool), 0n);
   const currentShortPool = marketRows.reduce((sum, row) => sum + bigintFromNumeric(row.short_pool), 0n);
 

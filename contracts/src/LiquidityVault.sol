@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import {Direction} from "./Types.sol";
 import {ILiquidityVault} from "./interfaces/ILiquidityVault.sol";

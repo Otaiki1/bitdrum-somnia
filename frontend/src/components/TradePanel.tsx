@@ -145,6 +145,7 @@ export const TradePanel = ({
         explorerUrl: tx?.explorerUrl || '',
         status: 'submitted',
         submittedAt: new Date().toISOString(),
+        timestamp: Date.now(),
         error: null,
       };
 
@@ -218,29 +219,21 @@ export const TradePanel = ({
             </div>
           </div>
 
-          <div className="mt-6 grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="flex justify-center lg:justify-start">
-              <div className="core-ring h-[14rem] w-[14rem]">
-                <div className="core-ring__inner">
-                  <span className={`text-[0.72rem] uppercase tracking-[0.32em] ${signalDirectionTone(coreDirection)}`}>
-                    {coreDirection}
-                  </span>
-                  <strong className="mt-3 font-mono text-4xl font-semibold text-[var(--text-primary)]">
-                    {coreConfidence}%
-                  </strong>
+          <div className="flex flex-col gap-4">
+            <div className="rounded-[1.45rem] border border-[rgba(59,130,246,0.14)] bg-[rgba(59,130,246,0.04)] p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 text-[0.62rem] font-bold uppercase tracking-[0.24em] text-[var(--accent-cyan)]">
+                  <Radar className="h-3.5 w-3.5" />
+                  {signalLoading ? 'Calibrating...' : 'Core Intel'}
+                </div>
+                <div className={`rounded-full border px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.16em] ${coreDirection === 'UP' ? 'text-[var(--state-up)] border-[var(--state-up)]/20 bg-[var(--state-up)]/5' : 'text-[var(--state-down)] border-[var(--state-down)]/20 bg-[var(--state-down)]/5'}`}>
+                  {coreDirection} {coreConfidence}%
                 </div>
               </div>
-            </div>
-            <div className="space-y-4">
-              <div className="rounded-[1.45rem] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] p-4">
-                <div className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.3em] text-[var(--accent-cyan)]">
-                  <BrainCircuit className="h-4 w-4" />
-                  Rationale
-                </div>
-                <p className="mt-4 text-sm leading-7 text-[var(--text-secondary)]">{rationale}</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <StatPill label="Direction" value={coreDirection} accent={coreDirection === 'UP' ? 'success' : 'danger'} />
+              <p className="mt-4 text-[0.88rem] leading-6 text-[var(--text-secondary)]">
+                {rationale}
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 <StatPill label="Confidence" value={`${coreConfidence}%`} accent="core" />
                 <StatPill label="POM" value={`+${(currentPomBps / 100).toFixed(0)}%`} accent="gold" />
               </div>
@@ -295,7 +288,7 @@ export const TradePanel = ({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4">
           {(['UP', 'DOWN'] as BitdrumDirection[]).map((direction) => {
             const active = previewDirection === direction;
             const isUp = direction === 'UP';
@@ -303,58 +296,70 @@ export const TradePanel = ({
               <button
                 key={direction}
                 onClick={() => setPreviewDirection(direction)}
-                className={`cta-press rounded-[1.65rem] border px-5 py-6 text-left transition ${
+                className={`cta-press rounded-[2rem] border px-6 py-8 text-left transition-all duration-300 ${
                   active
                     ? isUp
-                      ? 'border-[rgba(22,163,74,0.28)] bg-[radial-gradient(circle_at_top,rgba(22,163,74,0.16),transparent_52%),rgba(22,163,74,0.08)] shadow-[0_0_24px_rgba(22,163,74,0.14)]'
-                      : 'border-[rgba(220,38,38,0.28)] bg-[radial-gradient(circle_at_top,rgba(220,38,38,0.16),transparent_52%),rgba(220,38,38,0.08)] shadow-[0_0_24px_rgba(220,38,38,0.12)]'
-                    : 'border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] hover:border-[rgba(245,185,66,0.18)]'
+                      ? 'border-[rgba(22,163,74,0.4)] bg-[radial-gradient(circle_at_top,rgba(22,163,74,0.18),transparent_60%),rgba(22,163,74,0.08)] shadow-[0_0_24px_rgba(22,163,74,0.16)]'
+                      : 'border-[rgba(220,38,38,0.4)] bg-[radial-gradient(circle_at_top,rgba(220,38,38,0.18),transparent_60%),rgba(220,38,38,0.08)] shadow-[0_0_24px_rgba(220,38,38,0.14)]'
+                    : 'border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] hover:border-[rgba(255,255,255,0.12)] hover:bg-[rgba(255,255,255,0.05)]'
                 }`}
               >
-                <div className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">
-                  {isUp ? 'Call Higher' : 'Call Lower'}
+                <div className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)] opacity-80">
+                  {isUp ? 'Bias higher' : 'Bias lower'}
                 </div>
-                <div className={`mt-3 font-heading text-3xl font-semibold tracking-[-0.05em] ${isUp ? 'text-[var(--state-up)]' : 'text-[var(--state-down)]'}`}>
+                <div className={`mt-4 font-heading text-4xl font-bold tracking-tight ${isUp ? 'text-[var(--state-up)]' : 'text-[var(--state-down)]'}`}>
                   {direction}
                 </div>
               </button>
             );
           })}
-
-          <button
-            onClick={() => (authenticated ? handleTrade(previewDirection) : handleConnect())}
-            disabled={isPending || connecting}
-            className="cta-press rounded-[1.8rem] border border-[rgba(245,185,66,0.2)] bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-5 py-6 text-left text-[#140c00] shadow-[0_0_30px_rgba(245,185,66,0.18)] disabled:cursor-not-allowed disabled:opacity-65"
-          >
-            <div className="text-[0.68rem] uppercase tracking-[0.3em] text-[#4d3300]">
-              {authenticated ? 'Confirm Order' : 'Wallet Required'}
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="font-heading text-2xl font-semibold tracking-[-0.05em]">
-                {isPending ? 'Submitting...' : authenticated ? 'Lock Position' : 'Connect Wallet'}
-              </span>
-              {isPending || connecting ? <Loader2 className="h-5 w-5 animate-spin" /> : authenticated ? <ArrowUpRight className="h-5 w-5" /> : <Wallet className="h-5 w-5" />}
-            </div>
-          </button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[1.35rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-4">
-            <div className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">If You’re Right</div>
-            <div className="mt-3 font-mono text-2xl text-[var(--text-primary)]">
-              {formatTokenAmount(String(Number(stake || '0') + projectedProfit))} STT
+        <button
+          onClick={() => (authenticated ? handleTrade(previewDirection) : handleConnect())}
+          disabled={isPending || connecting}
+          className="cta-press relative mt-2 flex w-full items-center justify-between overflow-hidden rounded-[2rem] border border-[rgba(245,185,66,0.3)] bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-8 py-7 text-left text-[#140c00] shadow-[0_18px_48px_rgba(245,185,66,0.15)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_64px_rgba(245,185,66,0.22)] disabled:cursor-not-allowed disabled:opacity-65"
+        >
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)] -translate-x-full animate-[shimmer_2s_infinite]" />
+          <div className="relative">
+            <div className="text-[0.62rem] font-black uppercase tracking-[0.3em] text-[#4d3300] opacity-60">
+              {authenticated ? 'Transaction ready' : 'Security layer'}
             </div>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">You Called It Right</p>
+            <div className="mt-2 font-heading text-2xl font-bold tracking-tight">
+              {isPending ? 'Executing order...' : authenticated ? 'Place Trade' : 'Connect Somnia Wallet'}
+            </div>
           </div>
-          <div className="rounded-[1.35rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.08)] p-4">
-            <div className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--state-down)]">If Wrong</div>
-            <div className="mt-3 font-mono text-2xl text-[var(--text-primary)]">0.00 STT</div>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">Market Moved Against You</p>
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-black/10">
+            {isPending || connecting ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : authenticated ? (
+              <ArrowUpRight className="h-6 w-6" />
+            ) : (
+              <Wallet className="h-6 w-6" />
+            )}
           </div>
-          <div className="rounded-[1.35rem] border border-[rgba(59,130,246,0.16)] bg-[rgba(59,130,246,0.07)] p-4">
-            <div className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--accent-core)]">Round</div>
-            <div className="mt-3 font-mono text-2xl text-[var(--text-primary)]">{formatTimeframe(activeTimeframeSeconds)}</div>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">Somnia-settled binary market</p>
+        </button>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] p-4 text-center">
+            <div className="text-[0.58rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">Reward</div>
+            <div className="mt-3 font-heading text-xl font-bold text-[var(--state-up)]">
+              {formatTokenAmount(String(Number(stake || '0') + projectedProfit))}
+              <span className="ml-1 text-[0.6rem] font-medium opacity-50">STT</span>
+            </div>
+          </div>
+          <div className="rounded-[1.4rem] border border-[rgba(220,38,38,0.14)] bg-[rgba(220,38,38,0.06)] p-4 text-center">
+            <div className="text-[0.58rem] font-bold uppercase tracking-[0.24em] text-[var(--state-down)]">Risk</div>
+            <div className="mt-3 font-heading text-xl font-bold text-[var(--text-primary)]">
+              0.00
+              <span className="ml-1 text-[0.6rem] font-medium opacity-50">STT</span>
+            </div>
+          </div>
+          <div className="rounded-[1.4rem] border border-[rgba(59,130,246,0.14)] bg-[rgba(59,130,246,0.06)] p-4 text-center">
+            <div className="text-[0.58rem] font-bold uppercase tracking-[0.24em] text-[var(--accent-core)]">Period</div>
+            <div className="mt-3 font-heading text-xl font-bold text-[var(--text-primary)]">
+              {formatTimeframe(activeTimeframeSeconds)}
+            </div>
           </div>
         </div>
 

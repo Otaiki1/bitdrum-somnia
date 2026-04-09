@@ -1,9 +1,10 @@
-import { Contract, JsonRpcProvider, Wallet } from 'ethers';
 import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+import { Contract, JsonRpcProvider, Wallet } from 'ethers';
 import { fetchOraclePrice } from './oracle';
 import { loadKeeperState, saveKeeperState, upsertMarketState } from './keeperState';
-
-dotenv.config();
 
 const SOMNIA_RPC_URL = process.env.SOMNIA_RPC_URL || 'https://dream-rpc.somnia.network';
 const PREDICTION_MARKET_ADDRESS = process.env.PREDICTION_MARKET_ADDRESS || '';
@@ -74,11 +75,12 @@ function toNumber(value: bigint) {
   return Number(value);
 }
 
-function marketStateLabel(state: number) {
-  if (state === MARKET_STATE.OPEN) return 'OPEN';
-  if (state === MARKET_STATE.LOCKED) return 'LOCKED';
-  if (state === MARKET_STATE.CLAIMABLE) return 'CLAIMABLE';
-  if (state === MARKET_STATE.CLOSED) return 'CLOSED';
+function marketStateLabel(state: number | bigint) {
+  const s = Number(state);
+  if (s === MARKET_STATE.OPEN) return 'OPEN';
+  if (s === MARKET_STATE.LOCKED) return 'LOCKED';
+  if (s === MARKET_STATE.CLAIMABLE) return 'CLAIMABLE';
+  if (s === MARKET_STATE.CLOSED) return 'CLOSED';
   return 'NONE';
 }
 
@@ -105,20 +107,61 @@ export const settleExpiredMarkets = async () => {
 
     for (let marketId = 1; marketId <= lastMarketId; marketId += 1) {
       try {
-        const market = await fetchMarketSnapshot(marketId);
-        const joinDeadline = toNumber(market.joiningWindowEnd);
-        const expiryAt = toNumber(market.expiryAt);
+        const rawMarket = await marketContract!.getMarket(marketId);
+        
+        // DEBUG: Write raw market data to a file since I cannot see console
+        await require('fs/promises').appendFile('/tmp/keeper-debug.log', `Market ${marketId} RAW: ${JSON.stringify(rawMarket, (key, value) => typeof value === 'bigint' ? value.toString() : value)}\n`, 'utf8');
+
+        // Ethers Result behaves as both array and object. Use indices for maximum reliability.
+        // If it's a nested struct return, it might be in rawMarket[0]
+        const data = Array.isArray(rawMarket[0]) ? rawMarket[0] : rawMarket;
+
+        const m = {
+          marketId: data[0],
+          opener: data[1],
+          openerDirection: Number(data[2]),
+          duration: data[3],
+          openedAt: data[4],
+          joiningWindowEnd: data[5],
+          expiryAt: data[6],
+          strikePrice: data[7],
+          settlementPrice: data[8],
+          strikeTimestamp: data[9],
+          settlementTimestamp: data[10],
+          pomProfitBps: data[11],
+          upPool: data[12],
+          downPool: data[13],
+          totalUserStaked: data[14],
+          vaultCommitted: data[15],
+          feeAmount: data[16],
+          sweptToVault: data[17],
+          participantCount: data[18],
+          claimedCount: data[19],
+          state: Number(data[20]),
+          outcome: Number(data[21]),
+        };
+
+        const joinDeadline = toNumber(m.joiningWindowEnd);
+        const expiryAt = toNumber(m.expiryAt);
+
+        console.log(`[Keeper] Market ${marketId}: state=${m.state}, joinDeadline=${joinDeadline}, NOW=${currentTimestamp}`);
 
         upsertMarketState(keeperState, String(marketId), {
           joinDeadline,
           expiryAt,
-          lastKnownState: marketStateLabel(market.state),
+          lastKnownState: marketStateLabel(m.state),
         });
 
-        if (market.state === MARKET_STATE.OPEN && currentTimestamp >= joinDeadline) {
-          if (KEEPERS_POM_BPS > 0 && Number(market.pomProfitBps) !== KEEPERS_POM_BPS) {
-            const pomTx = await marketContract!.setPomProfitBps(marketId, KEEPERS_POM_BPS);
-            await pomTx.wait();
+        const marketState = m.state;
+
+        if (marketState === MARKET_STATE.OPEN && currentTimestamp >= joinDeadline) {
+          if (KEEPERS_POM_BPS > 0 && Number(m.pomProfitBps) !== KEEPERS_POM_BPS) {
+            try {
+              const pomTx = await marketContract!.setPomProfitBps(marketId, KEEPERS_POM_BPS);
+              await pomTx.wait();
+            } catch (err) {
+              console.warn(`[Keeper] Failed to set POM BPS for market ${marketId} (likely unauthorized):`, (err as Error).message);
+            }
           }
 
           const lockTx = await marketContract!.lockMarket(marketId);
@@ -136,7 +179,7 @@ export const settleExpiredMarkets = async () => {
           continue;
         }
 
-        if (market.state === MARKET_STATE.LOCKED && currentTimestamp >= expiryAt) {
+        if (marketState === MARKET_STATE.LOCKED && currentTimestamp >= expiryAt) {
           const snapshot = await fetchOraclePrice();
           assertFreshSnapshot(snapshot.timestamp);
 

@@ -1,22 +1,22 @@
 # BitDrum Somnia Deployment Addresses
 
-**Last Updated**: 2026-04-03  
+**Last Updated**: 2026-04-09  
 **Network**: Somnia (Testnet: Shannon ID 50312 | Mainnet ID 5031)
 
 ---
 
-## Testnet (Shannon) - Deployment Status: ⏳ Pending Phase 1
+## Testnet (Shannon) - Deployment Status: ✅ Live
 
 ### Smart Contracts
 
 | Contract | Address | Explorer | Verified | Notes |
 |----------|---------|----------|----------|-------|
-| PredictionMarket | `0x[TBD]` | [Link](#) | ⏳ | Core market logic |
-| SettlementEngine | `0x[TBD]` | [Link](#) | ⏳ | Oracle settlement |
-| LiquidityVault | `0x[TBD]` | [Link](#) | ⏳ | Counterparty funding |
-| Treasury | `0x[TBD]` | [Link](#) | ⏳ | Fee allocation |
-| LeaderboardRegistry | `0x[TBD]` | [Link](#) | ⏳ | Trader stats |
-| SubscriptionsContract | `0x[TBD]` | [Link](#) | ⏳ | Signal tier gating |
+| PredictionMarket | `0x73c1c308Ac8166a2fc6685A5BbC79cda128864BA` | [Link](https://shannon-explorer.somnia.network/address/0x73c1c308Ac8166a2fc6685A5BbC79cda128864BA) | ⏳ | Core market logic (deploy_pm3.txt) |
+| SettlementEngine | `0xC74711A55E19c4a2F5e675830FCF6F9485Ac6AD2` | [Link](https://shannon-explorer.somnia.network/address/0xC74711A55E19c4a2F5e675830FCF6F9485Ac6AD2) | ⏳ | Oracle settlement (deploy_se4_manual) |
+| LiquidityVault | `0x3ddc3eA375559D56E5Dc5f0dF392929d5a49243f` | [Link](https://shannon-explorer.somnia.network/address/0x3ddc3eA375559D56E5Dc5f0dF392929d5a49243f) | ⏳ | Counterparty funding — seeded 1 STT 2026-04-09 |
+| Treasury | `0x3c18DB14705C27cB87a52B2F1a64032D11FE1061` | [Link](https://shannon-explorer.somnia.network/address/0x3c18DB14705C27cB87a52B2F1a64032D11FE1061) | ⏳ | Fee allocation |
+| LeaderboardRegistry | `0x60600DC92Dd71B45f2C1b375278310EAc1C8469e` | [Link](https://shannon-explorer.somnia.network/address/0x60600DC92Dd71B45f2C1b375278310EAc1C8469e) | ⏳ | Trader stats (deploy_lb_manual) |
+| SubscriptionsContract | `0xf2Ddd1c079cb8dCdaD8F399Aa65364235eef1c5e` | [Link](https://shannon-explorer.somnia.network/address/0xf2Ddd1c079cb8dCdaD8F399Aa65364235eef1c5e) | ⏳ | Signal tier gating |
 
 ### External Contracts (Already on Somnia Shannon)
 
@@ -38,18 +38,19 @@
 ### Environment Variables (Testnet)
 
 ```bash
-# Contracts
-NEXT_PUBLIC_PREDICTION_MARKET_ADDR=0x[TBD]
-NEXT_PUBLIC_SETTLEMENT_ENGINE_ADDR=0x[TBD]
-NEXT_PUBLIC_LIQUIDITY_VAULT_ADDR=0x[TBD]
-NEXT_PUBLIC_TREASURY_ADDR=0x[TBD]
-NEXT_PUBLIC_LEADERBOARD_REGISTRY_ADDR=0x[TBD]
-NEXT_PUBLIC_SUBSCRIPTIONS_ADDR=0x[TBD]
-NEXT_PUBLIC_WBTC_ADDR=0x[find]
+# Contracts (verified on-chain 2026-04-09)
+NEXT_PUBLIC_PREDICTION_MARKET_ADDR=0x73c1c308Ac8166a2fc6685A5BbC79cda128864BA
+NEXT_PUBLIC_SETTLEMENT_ENGINE_ADDR=0xC74711A55E19c4a2F5e675830FCF6F9485Ac6AD2
+NEXT_PUBLIC_LIQUIDITY_VAULT_ADDR=0x3ddc3eA375559D56E5Dc5f0dF392929d5a49243f
+NEXT_PUBLIC_TREASURY_ADDR=0x3c18DB14705C27cB87a52B2F1a64032D11FE1061
+NEXT_PUBLIC_LEADERBOARD_REGISTRY_ADDR=0x60600DC92Dd71B45f2C1b375278310EAc1C8469e
+NEXT_PUBLIC_SUBSCRIPTIONS_ADDR=0xf2Ddd1c079cb8dCdaD8F399Aa65364235eef1c5e
 
-# Oracles
-DIA_ORACLE_ADDR=0x[find]
-PROTOFIRE_ORACLE_ADDR=0x[find]
+# Onchain wiring (verified 2026-04-09)
+# vault.predictionMarket = 0x73c1c308Ac8166a2fc6685A5BbC79cda128864BA ✅
+# market.settlementEngine = 0xC74711A55E19c4a2F5e675830FCF6F9485Ac6AD2 ✅
+# leaderboard.settlementEngine = 0xC74711A55E19c4a2F5e675830FCF6F9485Ac6AD2 ✅
+# vault.balance = 1 STT (seeded 2026-04-09, tx 0xb37097d860b88139d046035de1a5c6357fa3abb058052bb559f989d0ea9d024d) ✅
 
 # RPC & Chain
 SOMNIA_RPC_URL=https://dream-rpc.somnia.network

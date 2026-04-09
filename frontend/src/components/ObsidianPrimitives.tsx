@@ -98,9 +98,9 @@ export function StatPill({
             : 'border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] text-[var(--text-secondary)]';
 
   return (
-    <div className={cn('rounded-full border px-3 py-1.5', tone)}>
-      <span className="text-[0.6rem] uppercase tracking-[0.28em]">{label}</span>
-      <span className="ml-2 font-mono text-[0.76rem] font-semibold">{value}</span>
+    <div className={cn('flex items-center rounded-full border px-3 py-1.5', tone)}>
+      <span className="text-[0.6rem] uppercase tracking-[0.16em]">{label}</span>
+      <span className="ml-2.5 font-mono text-[0.76rem] font-semibold tracking-tight">{value}</span>
     </div>
   );
 }

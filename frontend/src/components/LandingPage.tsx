@@ -52,8 +52,8 @@ export function LandingPage() {
             <div className="relative">
               <div className="mb-8 flex items-center justify-between">
                 <div>
-                  <p className="text-[0.68rem] uppercase tracking-[0.34em] text-[var(--accent-core)]">Live Core Pulse</p>
-                  <h3 className="mt-3 font-heading text-3xl font-semibold tracking-[-0.05em] text-[var(--text-primary)]">
+                  <p className="text-[0.6rem] font-medium uppercase tracking-[0.2em] text-[var(--accent-core)]">Live Core Pulse</p>
+                  <h3 className="mt-3 font-heading text-4xl font-semibold tracking-[-0.05em] text-[var(--text-primary)]">
                     The Core
                   </h3>
                 </div>
@@ -67,37 +67,69 @@ export function LandingPage() {
                 <div className="flex items-center justify-center">
                   <div className="core-ring">
                     <div className="core-ring__inner">
-                      <span className="text-[0.7rem] uppercase tracking-[0.32em] text-[var(--accent-cyan)]">Bullish</span>
-                      <strong className="mt-3 font-mono text-5xl font-semibold text-[var(--text-primary)]">82%</strong>
+                      <span className="text-[0.62rem] font-bold uppercase tracking-[0.24em] text-[var(--accent-cyan)] opacity-80">Bullish</span>
+                      <strong className="mt-2.5 font-heading text-6xl font-bold tracking-[-0.04em] text-[var(--text-primary)]">82%</strong>
+                      <div className="mt-4 flex gap-1">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <div key={i} className="h-1 w-1 rounded-full bg-[var(--accent-cyan)] opacity-40" />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
                 <div className="space-y-5">
-                  <div className="rounded-[1.8rem] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] p-5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Direction</span>
-                      <span className="text-[0.74rem] uppercase tracking-[0.24em] text-[var(--state-up)]">UP Bias</span>
+                  <div className="relative overflow-hidden rounded-[2.2rem] border border-[rgba(59,130,246,0.14)] bg-[rgba(59,130,246,0.04)] p-7">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(59,130,246,0.06),transparent_40%)]" />
+                    <div className="relative flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-2 w-2 animate-pulse rounded-full bg-[var(--state-up)] shadow-[0_0_10px_var(--state-up)]" />
+                        <span className="text-[0.62rem] font-bold uppercase tracking-[0.28em] text-[var(--accent-core)]">Core Telemetry</span>
+                      </div>
+                      <span className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--state-up)]">Bullish Signal</span>
                     </div>
-                    <p className="mt-4 text-sm leading-7 text-[var(--text-secondary)]">
-                      The Core analyzes market signals in real-time, combining momentum, order flow,
-                      and high-performing trader alignment into a single decisive call.
+                    <p className="relative mt-6 text-[0.98rem] font-medium leading-[1.7] text-[var(--text-secondary)]">
+                      The Core engine is currently detecting a <span className="text-[var(--text-primary)]">dominant long bias</span> fueled by aggressive spot buying and sustained oracle alignment.
                     </p>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] p-4">
-                      <Bot className="h-4 w-4 text-[var(--accent-core)]" />
-                      <p className="mt-3 text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Direction</p>
-                      <p className="mt-2 font-mono text-lg text-[var(--text-primary)]">UP</p>
+                  <div className="metrics-panel flex-row">
+                    <div className="metrics-panel__item">
+                      <div className="glow-aura" style={{ '--aura-color': 'var(--accent-core)' } as React.CSSProperties} />
+                      <div className="relative flex items-center gap-2.5">
+                        <Bot className="h-3.5 w-3.5 text-[var(--accent-core)]" />
+                        <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Bias</span>
+                      </div>
+                      <p className="relative mt-4 font-heading text-2xl font-bold tracking-tight text-[var(--text-primary)]">UP</p>
+                      <div className="meter-bar">
+                        <div className="meter-bar__fill bg-[var(--accent-core)]" style={{ width: '100%' }} />
+                      </div>
                     </div>
-                    <div className="rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] p-4">
-                      <Radar className="h-4 w-4 text-[var(--accent-cyan)]" />
-                      <p className="mt-3 text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Confidence</p>
-                      <p className="mt-2 font-mono text-lg text-[var(--text-primary)]">82%</p>
+
+                    <div className="metrics-panel__divider" />
+
+                    <div className="metrics-panel__item">
+                      <div className="glow-aura" style={{ '--aura-color': 'var(--accent-cyan)' } as React.CSSProperties} />
+                      <div className="relative flex items-center gap-2.5">
+                        <Radar className="h-3.5 w-3.5 text-[var(--accent-cyan)]" />
+                        <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Conf</span>
+                      </div>
+                      <p className="relative mt-4 font-heading text-2xl font-bold tracking-tight text-[var(--text-primary)]">82%</p>
+                      <div className="meter-bar">
+                        <div className="meter-bar__fill bg-[var(--accent-cyan)] shadow-[0_0_8px_var(--accent-cyan)]" style={{ width: '82%' }} />
+                      </div>
                     </div>
-                    <div className="rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] p-4">
-                      <Zap className="h-4 w-4 text-[var(--accent-gold)]" />
-                      <p className="mt-3 text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Profit Edge</p>
-                      <p className="mt-2 font-mono text-lg text-[var(--text-primary)]">+48%</p>
+
+                    <div className="metrics-panel__divider" />
+
+                    <div className="metrics-panel__item">
+                      <div className="glow-aura" style={{ '--aura-color': 'var(--accent-gold)' } as React.CSSProperties} />
+                      <div className="relative flex items-center gap-2.5">
+                        <Zap className="h-3.5 w-3.5 text-[var(--accent-gold)]" />
+                        <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Edge</span>
+                      </div>
+                      <p className="relative mt-4 font-heading text-2xl font-bold tracking-tight text-[var(--text-primary)]">+48%</p>
+                      <div className="meter-bar">
+                        <div className="meter-bar__fill bg-[var(--accent-gold)] shadow-[0_0_8px_var(--accent-gold)]" style={{ width: '48%' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -144,21 +176,22 @@ export function LandingPage() {
               description="Direction, confidence, momentum, and rationale are rendered as a live decision engine, not a passive badge."
             />
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[1.6rem] border border-[rgba(59,130,246,0.18)] bg-[rgba(59,130,246,0.09)] p-5">
-                <p className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--accent-cyan)]">Current Call</p>
-                <div className="mt-4 flex items-end gap-3">
-                  <span className="font-heading text-4xl font-semibold tracking-[-0.06em] text-[var(--text-primary)]">UP</span>
-                  <span className="font-mono text-lg text-[var(--accent-core)]">82%</span>
+              <div className="group relative overflow-hidden rounded-[1.6rem] border border-[rgba(59,130,246,0.18)] bg-[rgba(59,130,246,0.08)] p-6 transition-all duration-300 hover:border-[rgba(59,130,246,0.28)]">
+                <div className="absolute -right-6 -top-6 h-24 w-24 bg-[var(--accent-core)] opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-10" />
+                <p className="relative text-[0.62rem] font-medium uppercase tracking-[0.22em] text-[var(--accent-cyan)]">Current Call</p>
+                <div className="relative mt-5 flex items-end gap-3">
+                  <span className="font-heading text-5xl font-bold tracking-[-0.06em] text-[var(--text-primary)]">UP</span>
+                  <span className="font-mono text-xl font-medium text-[var(--accent-core)]">82%</span>
                 </div>
               </div>
-              <div className="rounded-[1.6rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] p-5">
-                <p className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Pulse State</p>
-                <div className="mt-5 flex gap-2">
+              <div className="group relative overflow-hidden rounded-[1.6rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.025)] p-6 transition-all duration-300 hover:border-[color:var(--border-strong)]">
+                <p className="relative text-[0.62rem] font-medium uppercase tracking-[0.22em] text-[var(--text-muted)]">Pulse State</p>
+                <div className="relative mt-6 flex gap-2.5">
                   {Array.from({ length: 10 }).map((_, index) => (
                     <span
                       key={index}
                       className="pulse-bar"
-                      style={{ animationDelay: `${index * 90}ms`, opacity: 0.35 + index * 0.06 }}
+                      style={{ animationDelay: `${index * 90}ms`, opacity: 0.25 + index * 0.08 }}
                     />
                   ))}
                 </div>

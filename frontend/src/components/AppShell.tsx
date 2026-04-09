@@ -2,10 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { LayoutGrid, Radar, Trophy, Wallet } from 'lucide-react';
 import { BrandMark, Eyebrow, Panel } from './ObsidianPrimitives';
 import { useBitdrumWallet } from './BitdrumWalletProvider';
 import { shortAddress } from '../utils/bitdrum';
+import { readSttBalance } from '../utils/contracts';
+import { formatUnits } from 'viem';
 
 const navItems = [
   { href: '/arena', label: 'Arena', icon: LayoutGrid },
@@ -25,6 +28,29 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { authenticated, address, connect, connecting } = useBitdrumWallet();
+  const [balance, setBalance] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!authenticated || !address) {
+      setBalance(null);
+      return;
+    }
+    let mounted = true;
+    const fetchBal = async () => {
+      try {
+        const bal = await readSttBalance(address as `0x${string}`);
+        if (mounted) setBalance(Number(formatUnits(bal, 18)).toFixed(3));
+      } catch (err) {
+        console.error('Failed to fetch balance', err);
+      }
+    };
+    fetchBal();
+    const interval = setInterval(fetchBal, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [authenticated, address]);
 
   return (
     <div className="mx-auto max-w-[1520px] px-4 py-8 sm:px-6 lg:px-8">
@@ -60,6 +86,11 @@ export function AppShell({
               <p className="mt-4 text-sm leading-7 text-[var(--text-secondary)]">
                 {authenticated ? shortAddress(address || '') : 'Connect your Somnia wallet to trade, claim, and track your edge.'}
               </p>
+              {authenticated && balance !== null && (
+                <div className="mt-2 text-sm font-semibold text-[var(--accent-gold)]">
+                  {balance} STT
+                </div>
+              )}
               {!authenticated ? (
                 <button
                   onClick={() => void connect()}

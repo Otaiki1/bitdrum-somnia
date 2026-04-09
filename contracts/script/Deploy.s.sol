@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import {Script, console} from "forge-std/Script.sol";
 import {LeaderboardRegistry} from "../src/LeaderboardRegistry.sol";
@@ -47,6 +47,6 @@ contract DeployScript is Script {
         console.log("SettlementEngine:          ", address(settlementEngine));
         console.log("SubscriptionsContract:     ", address(subscriptions));
         console.log("=====================================");
-        console.log("Vault seeded with:          100 STT (native)");
+        console.log("Vault seeded with:          10 STT (native)");
     }
 }

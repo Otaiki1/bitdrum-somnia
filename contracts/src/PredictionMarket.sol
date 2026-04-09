@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import {
     Direction,
@@ -255,7 +255,7 @@ contract PredictionMarket is Owned {
 
         if (market.outcome == Outcome.DRAW) {
             payout = stake.amount;
-            _nativeTransfer(msg.sender, payout);
+            ILiquidityVault(vault).payWinner(msg.sender, payout, 0);
         } else if (_isWinningStake(stake.direction, market.outcome)) {
             profit = (stake.amount * market.pomProfitBps) / 10_000;
             payout = stake.amount + profit;
@@ -307,10 +307,8 @@ contract PredictionMarket is Owned {
 
         if (direction == Direction.UP) {
             market.upPool += stakeAmount;
-            market.downPool += stakeAmount;
         } else {
             market.downPool += stakeAmount;
-            market.upPool += stakeAmount;
         }
     }
 

@@ -80,6 +80,7 @@ export type TradeExecutionRecord = {
   explorerUrl: string;
   status: TradeExecutionStatus;
   submittedAt: string;
+  timestamp: number;
   error: string | null;
 };
 

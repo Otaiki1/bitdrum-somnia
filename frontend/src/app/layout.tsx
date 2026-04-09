@@ -36,7 +36,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${headingFont.variable} ${bodyFont.variable} ${monoFont.variable} min-h-screen bg-[var(--bg-primary)] font-body text-[var(--text-primary)] antialiased`}>
+      <body
+        suppressHydrationWarning
+        className={`${headingFont.variable} ${bodyFont.variable} ${monoFont.variable} min-h-screen bg-[var(--bg-primary)] font-body text-[var(--text-primary)] antialiased`}
+      >
         <Providers>
           {children}
         </Providers>

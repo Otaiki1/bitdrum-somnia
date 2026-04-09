@@ -1,12 +1,13 @@
 import dotenv from 'dotenv';
-import { settleExpiredMarkets } from './services/settlement';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-dotenv.config();
+import { settleExpiredMarkets } from './services/settlement';
 
 const POLLING_INTERVAL = Number(process.env.POLLING_INTERVAL) || 3000;
 
 const startKeeper = async () => {
-  console.log(`🚀 BitDrum Keeper Service Started`);
+  console.log(`🚀 BitDrum Keeper Service Started V2`);
   console.log(`Interval: ${POLLING_INTERVAL}ms`);
 
   const loop = async () => {

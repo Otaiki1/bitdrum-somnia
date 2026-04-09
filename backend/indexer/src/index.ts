@@ -475,12 +475,18 @@ async function processLogs(fromBlock: bigint, toBlock: bigint) {
     await client.query('BEGIN');
 
     for (const log of logs) {
-      const decoded = decodeEventLog({
-        abi: MARKET_ABI,
-        topics: log.topics,
-        data: log.data,
-        strict: false,
-      });
+      let decoded;
+      try {
+        decoded = decodeEventLog({
+          abi: MARKET_ABI,
+          topics: log.topics,
+          data: log.data,
+          strict: false,
+        });
+      } catch (error) {
+        // Skip logs that don't match any event in the ABI
+        continue;
+      }
 
       if (!decoded.eventName) {
         continue;

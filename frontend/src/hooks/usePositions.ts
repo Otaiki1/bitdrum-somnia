@@ -34,7 +34,7 @@ export function usePositions(address: string | null | undefined) {
       return response.json();
     },
     enabled: Boolean(address),
-    refetchInterval: 300_000,
+    refetchInterval: 15_000,
   });
 
   const livePayload = frame?.payload;
