@@ -288,7 +288,14 @@ export const TradingDashboard = () => {
     return markers;
   }, [pendingTrades, positions]);
 
+  const [tradeToast, setTradeToast] = useState<{ message: string; visible: boolean } | null>(null);
+
   const handleTradeSubmitted = (record: TradeExecutionRecord) => {
+    if (record.status === 'confirmed') {
+      setTradeToast({ message: `Transaction confirmed for ${record.direction} ${record.stake} STT`, visible: true });
+      setTimeout(() => setTradeToast(null), 5000);
+    }
+    
     setPendingTrades((previous) => {
       const existing = previous.findIndex((trade) => trade.txHash === record.txHash);
       if (existing >= 0) {
@@ -345,6 +352,28 @@ export const TradingDashboard = () => {
 
   return (
     <div id="live-markets" className="relative">
+      {tradeToast && (
+        <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="rounded-[1rem] border border-[rgba(22,163,74,0.3)] bg-[rgba(10,10,10,0.95)] px-5 py-4 shadow-[0_8px_32px_rgba(22,163,74,0.15)] backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(22,163,74,0.1)]">
+                <div className="h-2 w-2 rounded-full bg-[var(--state-up)] shadow-[0_0_8px_var(--state-up)] animate-pulse" />
+              </div>
+              <div>
+                <p className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-[var(--state-up)]">Tx Confirmed</p>
+                <p className="font-heading text-sm text-[var(--text-primary)]">{tradeToast.message}</p>
+              </div>
+              <button 
+                onClick={() => setTradeToast(null)} 
+                className="ml-4 rounded-full p-1 text-[var(--text-muted)] hover:bg-[rgba(255,255,255,0.05)] hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {outcomeModal ? (
         <OutcomeModal
           outcome={outcomeModal.outcome}
