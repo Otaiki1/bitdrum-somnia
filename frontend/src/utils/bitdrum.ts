@@ -121,6 +121,52 @@ export type PositionRecord = {
   can_claim: boolean;
 };
 
+export function normalizeUnixTimestamp(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value > 1_000_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
+  }
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return normalizeUnixTimestamp(numeric);
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed / 1000);
+}
+
+export function toIsoFromTimestamp(value: string | number | null | undefined): string | null {
+  const seconds = normalizeUnixTimestamp(value);
+  return seconds ? new Date(seconds * 1000).toISOString() : null;
+}
+
+export function isResolvedPositionStatus(status: string | null | undefined) {
+  const normalized = String(status || '').toUpperCase();
+  return normalized === 'WIN' || normalized === 'LOSS' || normalized === 'DRAW';
+}
+
+export function formatUsdPriceLabel(value: string | number | null | undefined) {
+  const numeric =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? formatOraclePrice(value)
+        : null;
+
+  if (numeric === null || numeric === undefined || Number.isNaN(numeric)) {
+    return '--';
+  }
+
+  return `$${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export type BitdrumWallet = {
   address: `0x${string}`;
   walletClient: WalletClient;

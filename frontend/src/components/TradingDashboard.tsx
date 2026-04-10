@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query';
 import { formatUnits } from 'viem';
 import {
+  BellRing,
   Loader2,
   X,
 } from 'lucide-react';
@@ -14,15 +15,16 @@ import { useBitdrumWallet } from './BitdrumWalletProvider';
 import { Eyebrow, Panel, StatPill } from './ObsidianPrimitives';
 import {
   claimMarket,
+  formatUsdPriceLabel,
   formatTimeframe,
   formatTokenAmount,
-  shortAddress,
-  formatOraclePrice,
+  isResolvedPositionStatus,
+  normalizeUnixTimestamp,
   type MarketRecord,
+  type PositionRecord,
   type TradeExecutionRecord,
 } from '../utils/bitdrum';
 import { readSttBalance } from '../utils/contracts';
-import { SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
 import { usePositions } from '../hooks/usePositions';
 
 function CountdownTimer({ settlementDeadline }: { settlementDeadline: number | null }) {
@@ -68,6 +70,23 @@ function CountdownTimer({ settlementDeadline }: { settlementDeadline: number | n
       {label}
     </span>
   );
+}
+
+function getTradeStage(position: PositionRecord) {
+  if (isResolvedPositionStatus(position.status)) return position.status;
+
+  const deadline = normalizeUnixTimestamp(position.settlement_deadline);
+  if (!deadline) return 'LIVE';
+
+  return Math.floor(Date.now() / 1000) >= deadline ? 'SETTLING' : 'LIVE';
+}
+
+function getTradeStageTone(stage: string) {
+  if (stage === 'WIN') return 'success';
+  if (stage === 'LOSS') return 'danger';
+  if (stage === 'DRAW') return 'core';
+  if (stage === 'SETTLING') return 'danger';
+  return 'gold';
 }
 
 function OutcomeModal({
@@ -123,27 +142,14 @@ function OutcomeModal({
           </div>
         </div>
 
-        {(position.entry_price || position.settlement_price) ? (
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <StatPill
-              label="Entry"
-              value={
-                formatOraclePrice(position.entry_price)
-                  ? `$${formatOraclePrice(position.entry_price)!.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : '--'
-              }
-            />
-            <StatPill
-              label="Settlement"
-              value={
-                formatOraclePrice(position.settlement_price)
-                  ? `$${formatOraclePrice(position.settlement_price)!.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : '--'
-              }
-              accent={isWin ? 'success' : isDraw ? 'core' : 'danger'}
-            />
-          </div>
-        ) : null}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <StatPill label="Entry" value={formatUsdPriceLabel(position.entry_price)} accent="core" />
+          <StatPill
+            label="Settlement"
+            value={formatUsdPriceLabel(position.settlement_price)}
+            accent={isWin ? 'success' : isDraw ? 'core' : 'danger'}
+          />
+        </div>
       </Panel>
     </div>
   );
@@ -174,6 +180,7 @@ export const TradingDashboard = () => {
   const [isLockedIn, setIsLockedIn] = useState(false);
   const [sttBalance, setSttBalance] = useState<string | null>(null);
   const seenOutcomes = useRef<Set<string>>(new Set());
+  const seenStageToasts = useRef<Set<string>>(new Set());
 
   const viewerAddress = address ?? '';
   const { positions, summary: positionSummary, isLoading: positionsLoading } = usePositions(viewerAddress || null);
@@ -197,10 +204,10 @@ export const TradingDashboard = () => {
   // Aggressive refresh when settling: If any position is "Settling", poll faster.
   useEffect(() => {
     const hasSettling = positions.some(p => {
-      if (!p.settlement_deadline) return false;
-      const deadline = new Date(p.settlement_deadline).getTime();
-      const now = Date.now();
-      return now >= deadline && p.status !== 'WIN' && p.status !== 'LOSS' && p.status !== 'DRAW';
+      const deadline = normalizeUnixTimestamp(p.settlement_deadline);
+      if (!deadline) return false;
+      const now = Math.floor(Date.now() / 1000);
+      return now >= deadline && !isResolvedPositionStatus(p.status);
     });
 
     if (hasSettling) {
@@ -210,6 +217,20 @@ export const TradingDashboard = () => {
       return () => clearInterval(id);
     }
   }, [positions, queryClient, viewerAddress]);
+
+  useEffect(() => {
+    if (!currentBtcPrice) return;
+
+    setPendingTrades((previous) => {
+      let changed = false;
+      const next = previous.map((trade) => {
+        if (trade.status === 'failed' || trade.entryPrice !== null) return trade;
+        changed = true;
+        return { ...trade, entryPrice: currentBtcPrice };
+      });
+      return changed ? next : previous;
+    });
+  }, [currentBtcPrice]);
 
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -250,16 +271,34 @@ export const TradingDashboard = () => {
     }
   }, [positions, positionsLoading, isInitialized]);
 
+  useEffect(() => {
+    for (const position of positions) {
+      const stage = getTradeStage(position);
+      if (stage !== 'SETTLING') continue;
+
+      const key = `${position.market_id}-${position.direction}-${stage}`;
+      if (seenStageToasts.current.has(key)) continue;
+      seenStageToasts.current.add(key);
+      setTradeToast({
+        message: `Market #${position.market_id} is settling. Entry ${formatUsdPriceLabel(position.entry_price)}.`,
+        visible: true,
+      });
+      const timeout = setTimeout(() => setTradeToast(null), 4500);
+      return () => clearTimeout(timeout);
+    }
+  }, [positions]);
+
   const livePnL = useMemo(() => formatTokenAmount(positionSummary?.resolved_pnl || '0'), [positionSummary?.resolved_pnl]);
 
   const tradeMarkers = useMemo<TradeMarker[]>(() => {
     const markers: TradeMarker[] = [];
 
     for (const trade of pendingTrades) {
-      if (trade.status === 'failed' || !trade.entryPrice) continue;
+      const markerPrice = trade.entryPrice ?? currentBtcPrice;
+      if (trade.status === 'failed' || !markerPrice) continue;
       markers.push({
         time: Math.floor(new Date(trade.submittedAt).getTime() / 1000),
-        price: trade.entryPrice,
+        price: markerPrice,
         direction: trade.direction,
         label: `${trade.direction} ${trade.stake} STT`,
       });
@@ -275,10 +314,11 @@ export const TradingDashboard = () => {
       const key = `${position.market_id}-${position.direction}`;
       if (markers.some((marker) => marker.label.includes(key))) continue;
       
-      const entryPrice = formatOraclePrice(position.entry_price);
+      const entryPrice = position.entry_price ? Number(position.entry_price) / 1e8 : null;
       if (!entryPrice) continue;
+      const openedAt = normalizeUnixTimestamp(position.opened_at);
       markers.push({
-        time: position.opened_at ? Math.floor(new Date(position.opened_at).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        time: openedAt ?? Math.floor(Date.now() / 1000),
         price: entryPrice,
         direction: position.direction.toUpperCase() === 'LONG' || position.direction.toUpperCase() === 'UP' ? 'UP' : 'DOWN',
         label: `${position.direction} #${position.market_id}`,
@@ -286,7 +326,7 @@ export const TradingDashboard = () => {
     }
 
     return markers;
-  }, [pendingTrades, positions]);
+  }, [currentBtcPrice, pendingTrades, positions]);
 
   const [tradeToast, setTradeToast] = useState<{ message: string; visible: boolean } | null>(null);
 
@@ -354,14 +394,14 @@ export const TradingDashboard = () => {
     <div id="live-markets" className="relative">
       {tradeToast && (
         <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
-          <div className="rounded-[1rem] border border-[rgba(22,163,74,0.3)] bg-[rgba(10,10,10,0.95)] px-5 py-4 shadow-[0_8px_32px_rgba(22,163,74,0.15)] backdrop-blur-xl">
+          <div className="max-w-[calc(100vw-2rem)] rounded-[1rem] border border-[rgba(22,163,74,0.3)] bg-[rgba(10,10,10,0.95)] px-5 py-4 shadow-[0_8px_32px_rgba(22,163,74,0.15)] backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(22,163,74,0.1)]">
-                <div className="h-2 w-2 rounded-full bg-[var(--state-up)] shadow-[0_0_8px_var(--state-up)] animate-pulse" />
+                <BellRing className="h-4 w-4 text-[var(--state-up)]" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-[var(--state-up)]">Tx Confirmed</p>
-                <p className="font-heading text-sm text-[var(--text-primary)]">{tradeToast.message}</p>
+                <p className="font-heading text-sm text-[var(--text-primary)] break-words">{tradeToast.message}</p>
               </div>
               <button 
                 onClick={() => setTradeToast(null)} 
@@ -512,7 +552,7 @@ export const TradingDashboard = () => {
         </div>
       )}
 
-      <div className={`grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px] ${showAccount || isLockedIn ? 'hidden' : ''}`}>
+      <div className={`grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] ${showAccount || isLockedIn ? 'hidden' : ''}`}>
         <section className="flex min-w-0 flex-col gap-6">
           {walletError && (
             <div className="rounded-[1.55rem] border border-[rgba(220,38,38,0.22)] bg-[rgba(220,38,38,0.1)] px-5 py-4 text-sm text-[var(--text-primary)]">
@@ -520,14 +560,14 @@ export const TradingDashboard = () => {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.65rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] px-6 py-4 backdrop-blur-sm">
-            <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[1.65rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.02)] px-4 py-4 sm:px-6 backdrop-blur-sm">
+            <div className="flex min-w-0 flex-wrap items-center gap-4 sm:gap-6">
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-[var(--state-up)] shadow-[0_0_8px_var(--state-up)]" />
                 <span className="text-[0.68rem] font-bold uppercase tracking-[0.2em] text-[var(--accent-gold)]">Arena Live</span>
               </div>
               <div className="hidden h-4 w-px bg-[color:var(--border-subtle)] sm:block" />
-              <div className="flex gap-4">
+              <div className="flex min-w-0 flex-wrap gap-2 sm:gap-4">
                 <StatPill label="Win Rate" value={`${((positionSummary?.win_rate || 0) * 100).toFixed(1)}%`} accent="gold" />
                 <StatPill label="PnL" value={`${livePnL} STT`} accent={Number(positionSummary?.resolved_pnl || 0) >= 0 ? 'success' : 'danger'} />
                 {authenticated && sttBalance !== null && (
@@ -535,7 +575,7 @@ export const TradingDashboard = () => {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-3 sm:gap-4">
               <button
                 onClick={() => setIsLockedIn(true)}
                 className="flex items-center gap-2 rounded-full border border-[rgba(245,185,66,0.3)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--accent-gold)] transition hover:bg-[var(--accent-gold)] hover:text-black"
@@ -597,19 +637,29 @@ export const TradingDashboard = () => {
                   positions.map((pos) => {
                     const canClaim = (pos.status === 'WIN' || pos.status === 'DRAW') && !pos.claimed;
                     const isClaiming = claimingMarketId === pos.market_id;
+                    const stage = getTradeStage(pos);
                     return (
-                      <Panel key={`${pos.market_id}-${pos.direction}`} className="flex items-center justify-between p-4">
-                        <div className="flex items-center gap-4">
+                      <Panel key={`${pos.market_id}-${pos.direction}`} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-4">
                           <span className={`rounded-full border px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.24em] ${pos.direction === 'UP' ? 'text-[var(--state-up)] border-[var(--state-up)]/20' : 'text-[var(--state-down)] border-[var(--state-down)]/20'}`}>
                             {pos.direction}
                           </span>
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-heading text-lg tracking-tight text-[var(--text-primary)]">Market #{pos.market_id}</p>
-                            <p className="text-[0.62rem] uppercase tracking-[0.2em] text-[var(--text-muted)]">{formatTokenAmount(pos.stake_amount)} STT</p>
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              <StatPill label="Stake" value={`${formatTokenAmount(pos.stake_amount)} STT`} />
+                              <StatPill label="Status" value={stage} accent={getTradeStageTone(stage) as 'neutral' | 'gold' | 'core' | 'success' | 'danger'} />
+                              <StatPill label="Entry" value={formatUsdPriceLabel(pos.entry_price)} accent="core" />
+                              {isResolvedPositionStatus(pos.status) ? (
+                                <StatPill label="Close" value={formatUsdPriceLabel(pos.settlement_price)} accent={pos.status === 'WIN' ? 'success' : pos.status === 'DRAW' ? 'core' : 'danger'} />
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <CountdownTimer settlementDeadline={pos.settlement_deadline ? Math.floor(new Date(pos.settlement_deadline).getTime() / 1000) : null} />
+                        <div className="flex flex-wrap items-center gap-3">
+                          {!isResolvedPositionStatus(pos.status) ? (
+                            <CountdownTimer settlementDeadline={normalizeUnixTimestamp(pos.settlement_deadline)} />
+                          ) : null}
                           {canClaim && (
                             <button
                               disabled={isClaiming}

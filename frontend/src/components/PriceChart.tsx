@@ -230,6 +230,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [isLive, setIsLive] = useState(false);
+  const [chartReady, setChartReady] = useState(false);
   const visibleExecutions = useMemo(() => recentExecutions.slice(0, 3), [recentExecutions]);
   const latestStrike = tradeMarkers.length ? tradeMarkers[tradeMarkers.length - 1]?.price ?? null : null;
 
@@ -283,6 +284,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
     seriesRef.current = series;
     chartRef.current = chart;
+    setChartReady(true);
 
     const fetchPythHistory = async () => {
       try {
@@ -369,21 +371,22 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
     void startStreaming();
 
-    const handleResize = () => {
+    const resizeObserver = new ResizeObserver(() => {
       if (chartContainerRef.current) {
         chart.applyOptions({ width: chartContainerRef.current.clientWidth });
       }
-    };
+    });
 
-    window.addEventListener('resize', handleResize);
+    resizeObserver.observe(chartContainerRef.current);
 
     return () => {
       active = false;
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       if (interval) clearInterval(interval);
       chart.remove();
       seriesRef.current = null;
       chartRef.current = null;
+      setChartReady(false);
     };
   }, [chartMode]);
 
@@ -413,7 +416,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       try { markersPluginRef.current.detach?.(); } catch (e) {}
       markersPluginRef.current = null;
     }
-    if (tradeMarkers.length) {
+    if (chartReady && tradeMarkers.length) {
       const markers = tradeMarkers.map((marker) => ({
         time: marker.time as any,
         position: marker.direction === 'UP' ? 'belowBar' : 'aboveBar',
@@ -423,7 +426,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       })) as any[];
       markersPluginRef.current = createSeriesMarkers(series as any, markers);
     }
-  }, [latestStrike, tradeMarkers]);
+  }, [chartReady, latestStrike, tradeMarkers]);
 
   return (
     <Panel className="surface-lift p-5 sm:p-6">
@@ -489,7 +492,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         </div>
 
         {visibleExecutions.length ? (
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-3 sm:grid-cols-2">
             {visibleExecutions.map((execution) => (
               <ExecutionCard key={execution.id} execution={execution} />
             ))}

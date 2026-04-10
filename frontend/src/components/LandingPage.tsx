@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, Bot, BrainCircuit, Crown, Radar, Trophy, Waves, Zap } from 'lucide-react';
+import { ArrowRight, Bot, BrainCircuit, ChevronDown, Radar, Trophy, Waves, Zap } from 'lucide-react';
 import { AppLink, BrandMark, Panel, SectionTitle, StatPill } from './ObsidianPrimitives';
 
 const topTraders = [
@@ -16,7 +16,7 @@ export function LandingPage() {
       <div className="pointer-events-none absolute inset-x-0 top-[-10rem] h-[28rem] bg-[radial-gradient(circle_at_top,rgba(245,185,66,0.18),transparent_52%)]" />
       <div className="pointer-events-none absolute right-0 top-[18%] h-[24rem] w-[24rem] rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.12),transparent_62%)] blur-3xl" />
 
-      <section className="mx-auto grid min-h-[100svh] max-w-[1400px] gap-12 px-6 pb-20 pt-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:pt-12">
+      <section className="mx-auto grid min-h-[100svh] max-w-[1400px] gap-12 px-6 pb-28 pt-8 lg:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:pt-12">
         <div className="flex flex-col justify-center">
           <BrandMark className="mb-12" />
           <div className="max-w-3xl">
@@ -137,9 +137,17 @@ export function LandingPage() {
             </div>
           </Panel>
         </div>
+
+        <a
+          href="#how-it-works"
+          className="absolute bottom-8 left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-[rgba(255,255,255,0.1)] bg-[rgba(10,10,10,0.55)] px-4 py-2 text-[0.62rem] uppercase tracking-[0.28em] text-[var(--text-secondary)] backdrop-blur-md transition hover:border-[rgba(245,185,66,0.22)] hover:text-[var(--accent-gold)]"
+        >
+          Scroll Down
+          <ChevronDown className="h-3.5 w-3.5 animate-bounce" />
+        </a>
       </section>
 
-      <section className="mx-auto max-w-[1400px] px-6 py-24 lg:px-10">
+      <section id="how-it-works" className="mx-auto max-w-[1400px] scroll-mt-10 px-6 py-24 lg:px-10">
         <SectionTitle
           eyebrow="How It Works"
           title="Three fast decisions. One sharp outcome."
@@ -210,14 +218,14 @@ export function LandingPage() {
               {topTraders.map((trader, index) => (
                 <div
                   key={trader.name}
-                  className="flex items-center justify-between rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4"
+                  className="flex flex-col gap-4 rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex min-w-0 items-center gap-4">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0d0d0d] font-mono text-sm text-[var(--text-secondary)]">
                       #{index + 1}
                     </div>
-                    <div>
-                      <p className="font-heading text-xl tracking-[-0.04em] text-[var(--text-primary)]">{trader.name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate font-heading text-xl tracking-[-0.04em] text-[var(--text-primary)]">{trader.name}</p>
                       <p className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">{trader.tier}</p>
                     </div>
                   </div>

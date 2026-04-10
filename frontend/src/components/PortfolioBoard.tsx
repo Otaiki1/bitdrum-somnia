@@ -1,25 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ExternalLink, Loader2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBitdrumWallet } from './BitdrumWalletProvider';
 import { usePositions } from '../hooks/usePositions';
-import { claimMarket, formatOraclePrice, formatTimeframe, formatTokenAmount } from '../utils/bitdrum';
+import {
+  claimMarket,
+  formatTimeframe,
+  formatTokenAmount,
+  formatUsdPriceLabel,
+  isResolvedPositionStatus,
+  normalizeUnixTimestamp,
+  type PositionRecord,
+} from '../utils/bitdrum';
 import { SOMNIA_EXPLORER_BASE_URL } from '../utils/somnia';
 import { Eyebrow, Panel, StatPill } from './ObsidianPrimitives';
 
 function CountdownTimer({ settlementDeadline }: { settlementDeadline: number | null }) {
-  const [remaining, setRemaining] = useState<number | null>(settlementDeadline);
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
-  useState(() => {
+  useEffect(() => {
     if (!settlementDeadline) return;
     const id = setInterval(() => {
-      const now = Math.floor(Date.now() / 1000);
-      setRemaining(Math.max(0, settlementDeadline - now));
+      setNow(Math.floor(Date.now() / 1000));
     }, 1000);
     return () => clearInterval(id);
-  });
+  }, [settlementDeadline]);
+
+  const remaining = settlementDeadline ? Math.max(0, settlementDeadline - now) : null;
 
   if (remaining === null) return null;
   
@@ -93,7 +102,7 @@ export function PortfolioBoard() {
               No positions yet
             </div>
           ) : (
-            positions.map((position: any) => (
+            positions.map((position: PositionRecord) => (
               <article
                 key={`${position.market_id}-${position.direction}`}
                 className="rounded-[1.6rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-5 py-5"
@@ -104,9 +113,11 @@ export function PortfolioBoard() {
                       Market #{position.market_id} · {position.direction.toUpperCase()}
                     </h3>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <StatPill label="Status" value={position.status} accent={position.status === 'WIN' ? 'gold' : position.status === 'LOSS' ? 'danger' : position.status === 'DRAW' ? 'core' : 'neutral'} />
+                      <StatPill label="Status" value={isResolvedPositionStatus(position.status) ? position.status : (normalizeUnixTimestamp(position.settlement_deadline) && normalizeUnixTimestamp(position.settlement_deadline)! <= Math.floor(Date.now() / 1000) ? 'SETTLING' : 'LIVE')} accent={position.status === 'WIN' ? 'gold' : position.status === 'LOSS' ? 'danger' : position.status === 'DRAW' ? 'core' : 'neutral'} />
                       {position.duration_seconds ? <StatPill label="Round" value={formatTimeframe(position.duration_seconds)} accent="neutral" /> : null}
-                      {position.settlement_deadline ? <CountdownTimer settlementDeadline={position.settlement_deadline} /> : null}
+                      {!isResolvedPositionStatus(position.status) && normalizeUnixTimestamp(position.settlement_deadline) ? (
+                        <CountdownTimer settlementDeadline={normalizeUnixTimestamp(position.settlement_deadline)} />
+                      ) : null}
                     </div>
                   </div>
                   {position.can_claim ? (
@@ -123,7 +134,8 @@ export function PortfolioBoard() {
                 <div className="mt-6 grid gap-3 sm:grid-cols-4">
                   <StatPill label="Stake" value={`${formatTokenAmount(position.stake_amount)} STT`} />
                   <StatPill label="Expected" value={`${formatTokenAmount(position.expected_payout)} STT`} accent="gold" />
-                  <StatPill label="Entry" value={formatOraclePrice(position.entry_price) ? `$${formatOraclePrice(position.entry_price)!.toFixed(2)}` : '--'} accent="core" />
+                  <StatPill label="Entry" value={formatUsdPriceLabel(position.entry_price)} accent="core" />
+                  <StatPill label="Settlement" value={formatUsdPriceLabel(position.settlement_price)} accent={position.status === 'WIN' ? 'success' : position.status === 'DRAW' ? 'core' : 'danger'} />
                   <StatPill label="PnL" value={`${formatTokenAmount(position.net_pnl)} STT`} accent={Number(position.net_pnl) >= 0 ? 'success' : 'danger'} />
                 </div>
 

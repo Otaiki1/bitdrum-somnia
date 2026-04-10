@@ -31,10 +31,7 @@ export function AppShell({
   const [balance, setBalance] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authenticated || !address) {
-      setBalance(null);
-      return;
-    }
+    if (!authenticated || !address) return;
     let mounted = true;
     const fetchBal = async () => {
       try {
@@ -55,7 +52,7 @@ export function AppShell({
   return (
     <div className="mx-auto max-w-[1520px] px-4 py-8 sm:px-6 lg:px-8">
       <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="xl:sticky xl:top-6 xl:h-fit">
+        <aside className="min-w-0 xl:sticky xl:top-6 xl:h-fit">
           <Panel className="surface-lift p-5 sm:p-6">
             <Link href="/">
               <BrandMark />
