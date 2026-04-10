@@ -1,270 +1,125 @@
 # BitDrum
 
-**Decentralized BTC price prediction markets on Somnia — with AI-powered trade signals and a live leaderboard.**
+**Decentralized BTC price prediction markets on the Somnia Network.**
 
-Users stake native STT on whether Bitcoin's price will go UP or DOWN over a fixed window (30 seconds, 1 minute, or 5 minutes). The vault automatically matches every stake on the opposite side, so there is always a counter-party. Winners collect their principal plus a profit bonus (5–70% via the POM engine). An AI agent monitors top traders, pre-computes directional signals, and surfaces them inside the trade panel before you commit.
-
----
-
-## How it works
-
-### The trade flow
-
-```
-1. Open a market    — pick direction (UP/DOWN), timeframe, stake amount, send STT
-2. Join window      — other users join the opposite side (window = duration ÷ 3, min 10s)
-3. Lock             — keeper closes the joining window; no new entries accepted
-4. Settle           — keeper submits the BTC/USD price from the DIA on-chain oracle;
-                      contract compares to strike price → UP / DOWN / Draw
-5. Claim            — winners call claimPayout() and receive principal + POM profit;
-                      draw refunds everyone; losers' stakes sweep to the vault
-```
-
-### The vault
-
-Every user stake is matched 1:1 by `LiquidityVault` on the opposite side. This means both pools always have equal depth. The vault earns a small net surplus each market cycle (protocol fee + loser stakes minus winner profits), so it is self-sustaining after the first few markets.
-
-### The POM (Probable Outcome Multiplier)
-
-POM is the profit rate awarded to winners, expressed in basis points (500 = 5%, 7000 = 70%). The keeper sets it before locking a market based on signal confidence and vault depth. Winners receive `principal × (1 + POM/10000)`.
-
-### The AI agent
-
-A Python/FastAPI service that queries the gateway for recent trade history and market context, calls OpenAI, and produces a directional signal with a confidence score and rationale. Signals are pre-computed when a market opens or locks, stored in PostgreSQL, and surfaced in the frontend trade panel via the gateway REST API.
-
-### The leaderboard
-
-`LeaderboardRegistry` is updated on-chain by the `SettlementEngine` after every market settles. The indexer mirrors this data into PostgreSQL. The gateway streams leaderboard snapshots to connected frontends via WebSocket and publishes them to Somnia Streams for external consumers.
+BitDrum is a high-speed prediction market protocol that allows users to stake native STT on Bitcoin's short-term price movements. Blending decentralized finance with AI, BitDrum introduces automated market matching, real-time data streaming, and predictive modeling in a fully on-chain ecosystem.
 
 ---
 
-## Architecture
+## ⚡ Features
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Somnia EVM                          │
-│  PredictionMarket ─── SettlementEngine                  │
-│  LiquidityVault   ─── LeaderboardRegistry               │
-│  Treasury         ─── SubscriptionsContract             │
-│  DIA Oracle (BTC/USD — on-chain, read by keeper)        │
-└────────────────┬────────────────────────────────────────┘
-                 │ events / RPC
-     ┌───────────┼───────────────────────┐
-     │           │                       │
-  Indexer     Keeper                  Gateway
-  (viem        (viem                  (Express +
-  poll)        readContract           WebSocket)
-     │         + settle tx)               │
-     └──────────┬────────────────────────┘
-                │ PostgreSQL
-                │
-            AI Agent ── OpenAI
-                │
-            Frontend (Next.js)
-```
-
-**Indexer** — polls `getLogs` in block batches, writes markets/stakes/traders to PostgreSQL, triggers the gateway's Somnia Reactivity invalidation pipeline.
-
-**Keeper** — polls every 3 seconds, locks expired joining windows, reads BTC/USD from the DIA on-chain oracle, calls `SettlementEngine.settle()`.
-
-**Gateway** — serves REST + WebSocket. Subscribes to Somnia Reactivity for real-time invalidation. Publishes AI signals and leaderboard snapshots to Somnia Streams. Per-channel 2-second cache prevents redundant DB reads on bursts.
-
-**AI Agent** — FastAPI service. Called by the gateway on `MarketOpened` / `MarketLocked` events. Returns `{direction, confidence, rationale}`.
-
-**Frontend** — hook-based data layer: WS-primary with REST fallback for positions, feed, and leaderboard. Direct viem multicall for hot market-state reads (no gateway round-trip for pool sizes / balances).
+* **Peer-to-Pool Matching**: Every user stake is matched 1:1 by the `LiquidityVault` on the opposite side.
+* **Instant Settlement**: Backend Keeper services listen to on-chain DIA oracles and automatically determine UP/DOWN/Draw outcomes.
+* **Probable Outcome Multiplier (POM)**: A dynamic payout engine that awards up to 70% surplus profit based on vault depth and AI confidence.
+* **AI Signal Agent**: A Python/FastAPI service that analyzes top trader activity and surfaces directional signals directly into the trading UI.
+* **Live Leaderboards**: Fully on-chain stats synchronized in real-time to the frontend.
 
 ---
 
-## Project structure
+## 🏗 Architecture
 
-```
-bitdrum/
-├── contracts/
-│   ├── src/
-│   │   ├── PredictionMarket.sol      # payable openMarket / joinMarket; native STT
-│   │   ├── SettlementEngine.sol      # determines UP/DOWN/Draw from oracle data
-│   │   ├── LiquidityVault.sol        # matches every stake 1:1; pays winners
-│   │   ├── Treasury.sol              # receives 2% protocol fee; distributes to vault/AI/reserve
-│   │   ├── LeaderboardRegistry.sol   # on-chain trader stats updated per settlement
-│   │   └── SubscriptionsContract.sol # PRO (10 STT) / ELITE (25 STT) signal tiers
-│   └── script/Deploy.s.sol           # deploys all 6 contracts, seeds vault with 10 STT
-│
-├── backend/
-│   ├── indexer/src/index.ts          # viem event poller → PostgreSQL
-│   ├── keeper/src/                   # settlement bot; oracle.ts reads DIA on-chain
-│   ├── gateway/src/                  # REST + WS; reactivity + streams integration
-│   └── ai-agent/main.py              # FastAPI signal inference
-│
-└── frontend/src/
-    ├── hooks/                        # useWebSocket · usePositions · useFeed ·
-    │                                 # useLeaderboard · useMarketDetail · useSignal · usePom
-    ├── components/                   # TradingDashboard · TradePanel · PriceChart ·
-    │                                 # SocialFeed · LeaderboardCard
-    └── utils/
-        ├── somnia.ts                 # chain config, contract addresses
-        ├── bitdrum.ts                # openMarket / joinMarket / claimMarket (viem)
-        └── contracts.ts             # readMarketOnchain / readMarketAndBalance (multicall)
-```
+BitDrum relies on a sophisticated hybrid architecture: EVM smart contracts on Somnia handle all funds and rules, while a suite of Node.js and Python microservices handle real-time user experiences and automation.
+
+* **Smart Contracts (`/contracts`)**: Solidity ^0.8.20. Manages markets, vaults, treasuries, and subscriptions. Native STT is the core currency.
+* **Gateway API (`/backend/gateway`)**: Express REST and WebSocket. Handles client requests, feeds live reactivity events directly to the UI without polling delays.
+* **Keeper (`/backend/keeper`)**: Node.js automated settlement bot. Reads DIA oracle data and forcefully locks/settles markets precisely when their timeframes expire.
+* **Indexer (`/backend/indexer`)**: Uses `viem` to listen to Somnia blockchain events and syncs state to PostgreSQL.
+* **AI Agent (`/backend/ai-agent`)**: A fast Python service connected to OpenAI. Analyzes context and posts trade signals.
+* **Frontend (`/frontend`)**: Next.js React application. Features an immersive, responsive terminal interface.
 
 ---
 
-## Deploying to Somnia Shannon testnet
+## 🚀 Local Development Guide
 
 ### 1. Prerequisites
+- Foundry (`curl -L https://foundry.paradigm.xyz | bash && foundryup`)
+- Node.js (v20+) & Python (3.11+)
+- PostgreSQL (v16+)
+- Deployer wallet funded with testnet STT
 
-- Foundry: `curl -L https://foundry.paradigm.xyz | bash && foundryup`
-- Node.js 20+, Python 3.11+, PostgreSQL 16+
-- A deployer wallet funded with STT from `faucet.somnia.network`
-- An OpenAI API key
-
-### 2. Deploy contracts
-
+### 2. Smart Contract Deployment
 ```bash
 cd contracts
 export PRIVATE_KEY=0x<deployer_key>
 
 forge script script/Deploy.s.sol \
   --rpc-url https://dream-rpc.somnia.network \
-  --broadcast --verify \
+  --broadcast --verify
 ```
+*Note: Make sure to record the deployed addresses (PredictionMarket, SettlementEngine, etc.) for your `.env` files.*
 
-If Shannon deployment transactions fail immediately during every `CREATE`, recompile for a pre-Shanghai EVM target. The repo is pinned to `evm_version = "paris"` in [contracts/foundry.toml](/Users/0t41k1/Documents/somnia/bitdrum/contracts/foundry.toml) because Somnia Shannon can reject bytecode that uses newer opcodes such as `PUSH0`.
-
-The script prints six addresses. Record them — you need them in every `.env` file.
-
-### 3. Run the database migration
-
+### 3. Database Migration
 ```bash
 cd backend/indexer
 npm install
 npm run db:migrate
 ```
 
-### 4. Configure environment files
+### 4. Running the Microservices
+*Ensure all `.env` files are configured per their respective directories.*
 
-**`backend/indexer/.env`**
-```env
-POSTGRES_CONNECTION_STRING=postgresql://<user>@localhost:5432/bitdrum
-SOMNIA_RPC_URL=https://dream-rpc.somnia.network
-SOMNIA_RPC_FALLBACK_URL=https://rpc.somnia.network
-SOMNIA_CHAIN_ID=50312
-PREDICTION_MARKET_ADDRESS=<from deploy>
-START_BLOCK=<deployment block>
-POLL_INTERVAL_MS=3000
-BLOCK_BATCH_SIZE=500
-```
-
-**`backend/gateway/.env`**
-```env
-PORT=3001
-POSTGRES_CONNECTION_STRING=postgresql://<user>@localhost:5432/bitdrum
-SOMNIA_RPC_URL=https://dream-rpc.somnia.network
-SOMNIA_CHAIN_ID=50312
-PREDICTION_MARKET_ADDRESS=<from deploy>
-AI_AGENT_URL=http://localhost:8000
-PRIVY_APP_ID=<privy app id>
-PRIVY_APP_SECRET=<privy app secret>
-SOMNIA_REACTIVITY_ENABLED=true
-SOMNIA_REACTIVITY_WS_URL=ws://api.infra.testnet.somnia.network/ws
-SOMNIA_STREAMS_ENABLED=true
-STREAMS_PUBLISHER_PRIVATE_KEY=<keeper wallet key>
-STREAMS_PUBLISHER_ADDRESS=<keeper wallet address>
-```
-
-**`backend/keeper/.env`**
-```env
-SOMNIA_RPC_URL=https://dream-rpc.somnia.network
-SOMNIA_RPC_FALLBACK_URL=https://rpc.somnia.network
-SOMNIA_CHAIN_ID=50312
-PREDICTION_MARKET_ADDRESS=<from deploy>
-SETTLEMENT_ENGINE_ADDRESS=<from deploy>
-KEEPER_PRIVATE_KEY=<keeper wallet key>
-KEEPER_POM_BPS=1000
-POLLING_INTERVAL=3000
-# Optional: static price fallback if DIA oracle is unreachable
-# ORACLE_STATIC_PRICE=10500000000000
-```
-
-**`backend/ai-agent/.env`**
-```env
-OPENAI_API_KEY=<your key>
-GATEWAY_URL=http://localhost:3001/api
-```
-
-**`frontend/.env.local`**
-```env
-NEXT_PUBLIC_API_URL=http://localhost:3001/api
-NEXT_PUBLIC_WS_URL=ws://localhost:3001/ws
-NEXT_PUBLIC_CHAIN_ID=50312
-NEXT_PUBLIC_PREDICTION_MARKET_ADDR=<from deploy>
-NEXT_PUBLIC_PRIVY_APP_ID=<privy app id>
-```
-
-### 5. Start services (in order)
-
+**Start the AI Agent:**
 ```bash
-# AI Agent
-cd backend/ai-agent && pip install -r requirements.txt
+cd backend/ai-agent
+pip install -r requirements.txt
 uvicorn main:app --port 8000
+```
+
+**Start Node Environments in parallel tabs:**
+```bash
+# Gateway
+cd backend/gateway && npm install && npm run dev
 
 # Indexer
-cd backend/indexer && npm run build && npm start
-
-# Gateway
-cd backend/gateway && npm run build && npm start
+cd backend/indexer && npm install && npm run dev
 
 # Keeper
-cd backend/keeper && npm run build && npm start
-
-# Frontend
-cd frontend && npm install && npm run dev
+cd backend/keeper && npm install && npm run dev
 ```
 
-### 6. Verify
-
+**Start the Frontend UI:**
 ```bash
-curl http://localhost:8000/health    # {"status":"ok"}
-curl http://localhost:3001/health    # {"status":"healthy"}
+cd frontend
+npm install
+npm run dev
 ```
 
-Open `http://localhost:3000`, connect MetaMask on Somnia Shannon (chain ID 50312), and place a trade.
+---
+
+## ☁️ Cloud Deployment
+
+When taking BitDrum to a production or testnet live environment, the backend services should be deployed as isolated microservices:
+
+1. **Frontend (Vercel / Render)**
+   - Deployed as a standard Next.js application.
+   - Point `NEXT_PUBLIC_API_URL` to your live Gateway (e.g., `https://api.bitdrum.com/api`).
+2. **Gateway (Render Web Service)**
+   - Deployed as a **Web Service**.
+   - Requires exposing standard HTTP ports to serve REST and WebSockets.
+3. **Keeper & Indexer (Render Background Workers)**
+   - **Important**: Must be deployed as **Background Workers**, NOT Web Services.
+   - These are continuous loops. Because they do not bind to HTTP ports, deploying them as Web Services will result in health-check timeouts and crashes.
 
 ---
 
-## Tech stack
+## ⛓ Network Specifications
 
-| Layer | Technology |
-|-------|-----------|
-| Blockchain | Somnia EVM — Shannon testnet (50312) / Mainnet (5031) |
-| Smart contracts | Solidity ^0.8.20, Foundry |
-| Contract interaction | viem (frontend + indexer + keeper) |
-| Price oracle | DIA on-chain BTC/USD (`getValue("BTC/USD")`) |
-| Price chart | Pyth Network Hermes (real-time streaming) |
-| Real-time events | Somnia Reactivity SDK |
-| Data streams | Somnia Streams SDK |
-| Frontend | Next.js, Tailwind CSS, TypeScript |
-| Wallet | Privy (social login) + MetaMask |
-| Backend API | Node.js, Express, WebSocket |
-| AI signals | Python, FastAPI, OpenAI |
-| Database | PostgreSQL (Drizzle ORM for schema) |
+| Parameter | Somnia Shannon (Testnet) | Somnia Mainnet |
+|-----------|-------------------------|----------------|
+| **Chain ID** | `50312` | `5031` |
+| **RPC URL** | `https://dream-rpc.somnia.network` | `https://api.infra.mainnet.somnia.network` |
+| **Explorer**| `https://shannon-explorer.somnia.network`| `https://explorer.somnia.network` |
+| **Currency**| `STT` (18 Decimals) | `SOMI` (18 Decimals) |
+| **DIA Oracle**| `0x9206296Ea3aEE3E6bdC07F7AaeF14DfCf33d865D`| `0xbA0E0750A56e995506CA458b2BdD752754CF39C4`|
 
 ---
 
-## Oracle notes
+## 🔐 Security & Operations
 
-The keeper reads BTC/USD directly from the **DIA on-chain oracle** — no API key or HTTP endpoint needed:
-
-| Network | Oracle contract |
-|---------|----------------|
-| Testnet (Shannon) | `0x9206296Ea3aEE3E6bdC07F7AaeF14DfCf33d865D` |
-| Mainnet | `0xbA0E0750A56e995506CA458b2BdD752754CF39C4` |
-
-DIA updates every 120 seconds (or on 0.5% deviation). The frontend price chart uses Pyth/Hermes for sub-second streaming — separate from settlement.
+* **Oracle Reliability**: The keeper reads BTC/USD values purely on-chain via the DIA Oracle (`getValue("BTC/USD")`). The frontend display relies on the Pyth Hermes streaming network for millisecond visual fidelity.
+* **Liquidity Safeguards**: The `LiquidityVault` contract ensures users cannot bet more than the counter-party pool has capacity to pay out.
 
 ---
 
-## Staking token
-
-BitDrum uses **native STT** — the native gas token of Somnia. No token wrapping or ERC-20 approval is required. Opening or joining a market is a single transaction: `openMarket{value: stakeAmount}(...)`.
-
-Users get STT from the Somnia faucet at `faucet.somnia.network`.
+## 📄 License
+BitDrum Protocol is open-sourced under the MIT License.
