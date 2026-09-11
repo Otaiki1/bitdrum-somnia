@@ -273,19 +273,26 @@ export const TradePanel = ({
               </div>
             </div>
             <p className="mt-4 text-[0.88rem] leading-6 text-[var(--text-secondary)]">{rationale}</p>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <StatPill label="Model UP" value={pct(signal?.modelUp)} accent="core" />
-              <StatPill label="Market UP" value={pct(snap?.impliedUp)} accent="neutral" />
-              <StatPill
-                label="Edge"
-                value={signal?.edge === null || signal?.edge === undefined ? '--' : `${signal.edge >= 0 ? '+' : ''}${(signal.edge * 100).toFixed(1)}%`}
-                accent={coreDirection === 'NEUTRAL' ? 'neutral' : 'gold'}
-              />
+            <div className="mt-5 grid grid-cols-3 gap-2">
+              {[
+                { label: 'Model UP', value: pct(signal?.modelUp), tone: 'text-[var(--accent-core)]' },
+                { label: 'Market UP', value: pct(snap?.impliedUp), tone: 'text-[var(--accent-gold)]' },
+                {
+                  label: 'Edge',
+                  value: signal?.edge === null || signal?.edge === undefined ? '--' : `${signal.edge >= 0 ? '+' : ''}${(signal.edge * 100).toFixed(1)}%`,
+                  tone: coreDirection === 'UP' ? 'text-[var(--state-up)]' : coreDirection === 'DOWN' ? 'text-[var(--state-down)]' : 'text-[var(--text-secondary)]',
+                },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[1rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-3 py-2.5 text-center">
+                  <div className="text-[0.55rem] uppercase tracking-[0.2em] text-[var(--text-muted)]">{item.label}</div>
+                  <div className={`mt-1 font-mono text-[0.95rem] font-semibold tabular-nums ${item.tone}`}>{item.value}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3">
           {([60, 300] as CadenceSec[]).map((seconds) => (
             <button
               key={seconds}
@@ -300,6 +307,11 @@ export const TradePanel = ({
             </button>
           ))}
         </div>
+        {snap && !snap.book.yesAsks.length && !snap.book.noAsks.length ? (
+          <p className="-mt-1 px-1 text-[0.72rem] leading-6 text-[var(--text-muted)]">
+            No resting liquidity in this window yet — the testnet market maker mostly quotes 5m. Edge still prices it; switch cadence to trade.
+          </p>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-[1fr_1fr]">
           <label className="rounded-[1.45rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-4">

@@ -12,10 +12,10 @@ import { useUpDownMarket } from '../hooks/useUpDownMarket';
 import { useDreamPositions } from '../hooks/useDreamPositions';
 import { useCollateralBalance } from '../hooks/useCollateralBalance';
 import { COLLATERAL_SYMBOL } from '../lib/dreamdex/client';
-import type { CadenceSec, UpDownSnapshot } from '../lib/dreamdex/markets';
+import type { Asset, CadenceSec, UpDownSnapshot } from '../lib/dreamdex/markets';
 import { formatTimeframe, type TradeExecutionRecord } from '../utils/bitdrum';
 
-const ASSET = 'BTC';
+const ASSETS: Asset[] = ['BTC', 'ETH'];
 
 const fmt = (n: number | null | undefined, digits = 2) =>
   n === null || n === undefined ? '--' : n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -93,8 +93,9 @@ function WindowBook({ snap }: { snap: UpDownSnapshot | null }) {
 export const TradingDashboard = () => {
   const { address, username, authenticated, error: walletError, connect, disconnect, openProfile } = useBitdrumWallet();
 
+  const [asset, setAsset] = useState<Asset>('BTC');
   const [cadence, setCadence] = useState<CadenceSec>(300);
-  const { snap, signal, error: marketError } = useUpDownMarket(ASSET, cadence);
+  const { snap, signal, error: marketError } = useUpDownMarket(asset, cadence);
   const { positions } = useDreamPositions(address);
   const { balance } = useCollateralBalance(address);
 
@@ -281,8 +282,21 @@ export const TradingDashboard = () => {
               >
                 {authenticated ? 'Account' : 'Connect'}
               </button>
+              <div className="flex gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] p-1">
+                {ASSETS.map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => setAsset(a)}
+                    className={`rounded-full px-3 py-1 text-[0.62rem] uppercase tracking-[0.2em] transition ${
+                      asset === a ? 'bg-[rgba(245,185,66,0.14)] text-[var(--accent-gold)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
               <span className="font-mono text-sm font-semibold text-[var(--text-primary)]">
-                {ASSET} {currentPrice ? `$${fmt(currentPrice)}` : '--'}
+                {asset} {currentPrice ? `$${fmt(currentPrice)}` : '--'}
               </span>
               <div className="rounded-full border border-[rgba(59,130,246,0.18)] bg-[rgba(59,130,246,0.08)] px-3 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--accent-core)]">
                 DreamDEX
@@ -291,7 +305,7 @@ export const TradingDashboard = () => {
           </div>
 
           <PriceChart
-            asset={ASSET}
+            asset={asset}
             openingPrice={snap?.openingPrice ?? null}
             tradeMarkers={tradeMarkers}
             recentExecutions={pendingTrades}
