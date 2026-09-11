@@ -3,10 +3,10 @@
 import { ArrowRight, Bot, BrainCircuit, ChevronDown, Radar, Trophy, Waves, Zap } from 'lucide-react';
 import { AppLink, BrandMark, Panel, SectionTitle, StatPill } from './ObsidianPrimitives';
 
-const topTraders = [
-  { name: 'Oracle Zero', tier: 'ORACLE', score: '+18.4%', accent: 'gold' as const },
-  { name: 'Signal Weaver', tier: 'PROPHET', score: '+11.2%', accent: 'core' as const },
-  { name: 'Northbound', tier: 'TRADER', score: '+7.9%', accent: 'success' as const },
+const venueFacts = [
+  { name: 'Liquidity', detail: 'DreamDEX Up/Down order books', score: 'CLOB', accent: 'gold' as const },
+  { name: 'Settlement', detail: 'Somnia oracle, 1 USDC per winning share', score: 'On-chain', accent: 'core' as const },
+  { name: 'Revenue', detail: 'Builder fee on every order BitDrum routes', score: 'Per order', accent: 'success' as const },
 ];
 
 export function LandingPage() {
@@ -21,7 +21,7 @@ export function LandingPage() {
           <BrandMark className="mb-12" />
           <div className="max-w-3xl">
             <p className="mb-5 text-[0.72rem] uppercase tracking-[0.34em] text-[var(--accent-gold)]">
-              Precision Bitcoin Prediction Protocol
+              Signal layer for DreamDEX Event Contracts
             </p>
             <h1 className="font-heading text-[clamp(3.1rem,6vw,6.4rem)] font-semibold leading-[0.9] tracking-[-0.08em] text-[var(--text-primary)]">
               Make the Call.
@@ -29,7 +29,7 @@ export function LandingPage() {
               Beat the Market.
             </h1>
             <p className="mt-7 max-w-2xl text-[1.08rem] leading-8 text-[var(--text-secondary)]">
-              AI-powered Bitcoin predictions. Stake on direction. Win on conviction.
+              One-tap Bitcoin Up/Down calls on DreamDEX, with a fair-value model that tells you when the book is mispriced.
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
               <AppLink href="/arena">Enter App</AppLink>
@@ -38,9 +38,9 @@ export function LandingPage() {
               </AppLink>
             </div>
             <div className="mt-10 flex flex-wrap gap-3">
-              <StatPill label="Settlement" value="Somnia" accent="gold" />
-              <StatPill label="Signal Layer" value="The Core" accent="core" />
-              <StatPill label="Rounds" value="30s / 1m / 5m" />
+              <StatPill label="Venue" value="DreamDEX" accent="gold" />
+              <StatPill label="Signal Layer" value="BitDrum Edge" accent="core" />
+              <StatPill label="Windows" value="1m / 5m" />
             </div>
           </div>
         </div>
@@ -156,9 +156,9 @@ export function LandingPage() {
 
         <div className="mt-12 grid gap-5 lg:grid-cols-3">
           {[
-            { icon: BrainCircuit, title: 'Choose Direction', body: 'Read the Core. Decide whether BTC finishes higher or lower.' },
-            { icon: Zap, title: 'Stake Your Position', body: 'Commit your STT stake and lock into the round with one action.' },
-            { icon: Trophy, title: 'Settle With Finality', body: 'When the round closes, Somnia settles the market and your result is recorded instantly.' },
+            { icon: BrainCircuit, title: 'Read the Edge', body: 'BitDrum prices the live window itself and shows you where the DreamDEX book disagrees.' },
+            { icon: Zap, title: 'Tap UP or DOWN', body: 'Your stake becomes a market order sized against the live book — payout and max loss shown before you sign.' },
+            { icon: Trophy, title: 'Settle and Redeem', body: 'When the window closes the oracle resolves it; winning shares redeem for collateral in one tap.' },
           ].map((item, index) => (
             <Panel key={item.title} className="relative overflow-hidden p-7">
               <div className="absolute right-6 top-5 text-[4rem] font-heading leading-none tracking-[-0.1em] text-white/5">
@@ -178,10 +178,10 @@ export function LandingPage() {
         <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           <Panel tone="core" className="p-8 lg:p-10">
             <SectionTitle
-              eyebrow="The Core"
+              eyebrow="BitDrum Edge"
               accent="core"
-              title="A market intelligence layer built to feel alive."
-              description="Direction, confidence, momentum, and rationale are rendered as a live decision engine, not a passive badge."
+              title="Model probability vs. what the book is charging."
+              description="Distance from the open, time left, and realized volatility give a fair P(UP). The call only fires when the gap clears the spread."
             />
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
               <div className="group relative overflow-hidden rounded-[1.6rem] border border-[rgba(59,130,246,0.18)] bg-[rgba(59,130,246,0.08)] p-6 transition-all duration-300 hover:border-[rgba(59,130,246,0.28)]">
@@ -209,13 +209,13 @@ export function LandingPage() {
 
           <Panel className="p-8">
             <SectionTitle
-              eyebrow="Social Proof"
-              title="Top traders set the tone for the week."
-              description="Merit matters. Reputation compounds. The best traders rise visibly."
+              eyebrow="Built on DreamDEX"
+              title="A front end with a business model."
+              description="BitDrum keeps the UX and the signal; DreamDEX Event Contracts supply liquidity and settlement."
               accent="gold"
             />
             <div className="mt-8 flex flex-col gap-3">
-              {topTraders.map((trader, index) => (
+              {venueFacts.map((trader, index) => (
                 <div
                   key={trader.name}
                   className="flex flex-col gap-4 rounded-[1.4rem] border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
@@ -226,10 +226,10 @@ export function LandingPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="truncate font-heading text-xl tracking-[-0.04em] text-[var(--text-primary)]">{trader.name}</p>
-                      <p className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">{trader.tier}</p>
+                      <p className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">{trader.detail}</p>
                     </div>
                   </div>
-                  <StatPill label="Weekly" value={trader.score} accent={trader.accent} />
+                  <StatPill label="How" value={trader.score} accent={trader.accent} />
                 </div>
               ))}
             </div>

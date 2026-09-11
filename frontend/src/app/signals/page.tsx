@@ -4,8 +4,8 @@ import { SignalsPageView } from '@/components/SignalsPageView';
 export default function SignalsPage() {
   return (
     <AppShell
-      title="The Core"
-      description="A dedicated intelligence surface for signal direction, confidence, rationale, and live market inputs."
+      title="BitDrum Edge"
+      description="The fair-value model behind every call: what BitDrum thinks the window is worth versus what the DreamDEX book is charging."
     >
       <SignalsPageView />
     </AppShell>

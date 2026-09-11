@@ -5,7 +5,7 @@ export default function ArenaPage() {
   return (
     <AppShell
       title="The trading arena"
-      description="Execution-focused, fast, and stripped of anything that does not help you make a directional Bitcoin call."
+      description="One-tap Up/Down calls on DreamDEX Event Contracts, priced by BitDrum Edge before you sign."
     >
       <TradingDashboard />
     </AppShell>

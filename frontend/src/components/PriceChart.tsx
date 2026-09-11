@@ -2,10 +2,11 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AreaSeries, CandlestickSeries, ColorType, IChartApi, ISeriesApi, LineStyle, createChart, createSeriesMarkers } from 'lightweight-charts';
-import { HermesClient } from '@pythnetwork/hermes-client';
 import { ArrowDownRight, ArrowUpRight, ExternalLink, LayoutPanelLeft, LineChart, Loader2, Waves } from 'lucide-react';
 import { Panel, StatPill } from './ObsidianPrimitives';
-import { formatTimeframe, type TradeExecutionRecord } from '../utils/bitdrum';
+import { type TradeExecutionRecord } from '../utils/bitdrum';
+import { fetchLivePrice, fetchMinuteCandles, type Asset } from '../lib/dreamdex/markets';
+import { COLLATERAL_SYMBOL } from '../lib/dreamdex/client';
 
 const ExecutionCard: React.FC<{ execution: TradeExecutionRecord }> = ({ execution }) => {
   const [progress, setProgress] = useState(0);
@@ -143,7 +144,7 @@ const ExecutionCard: React.FC<{ execution: TradeExecutionRecord }> = ({ executio
             <div className="text-[0.55rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">Stake</div>
             <div className="mt-1 font-mono text-lg font-semibold text-[var(--text-primary)]">
               {execution.stake}
-              <span className="ml-1 text-[0.6rem] font-normal opacity-50">STT</span>
+              <span className="ml-1 text-[0.6rem] font-normal opacity-50">{COLLATERAL_SYMBOL}</span>
             </div>
           </div>
           {execution.entryPrice ? (
@@ -195,9 +196,9 @@ const ExecutionCard: React.FC<{ execution: TradeExecutionRecord }> = ({ executio
   );
 };
 
-const PYTH_BTC_ID = '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43';
-const PYTH_HERMES_URL = 'https://hermes.pyth.network';
-const PYTH_BENCHMARK_URL = 'https://benchmarks.pyth.network/v1/shims/tradingview';
+/** Same index the DreamDEX markets resolve against (Somnia price feed). */
+const LIVE_POLL_MS = 2000;
+const HISTORY_MINUTES = 240;
 
 export interface TradeMarker {
   time: number;
@@ -207,6 +208,9 @@ export interface TradeMarker {
 }
 
 interface PriceChartProps {
+  asset?: Asset;
+  /** The live window's threshold; drawn as a dashed line so the call is legible at a glance. */
+  openingPrice?: number | null;
   tradeMarkers?: TradeMarker[];
   recentExecutions?: TradeExecutionRecord[];
   onPriceUpdate?: (price: number | null) => void;
@@ -215,6 +219,8 @@ interface PriceChartProps {
 
 
 export const PriceChart: React.FC<PriceChartProps> = ({
+  asset = 'BTC',
+  openingPrice = null,
   tradeMarkers = [],
   recentExecutions = [],
   onPriceUpdate,
@@ -232,7 +238,11 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const [isLive, setIsLive] = useState(false);
   const [chartReady, setChartReady] = useState(false);
   const visibleExecutions = useMemo(() => recentExecutions.slice(0, 3), [recentExecutions]);
-  const latestStrike = tradeMarkers.length ? tradeMarkers[tradeMarkers.length - 1]?.price ?? null : null;
+  const latestStrike = openingPrice;
+  const onPriceUpdateRef = useRef(onPriceUpdate);
+  useEffect(() => {
+    onPriceUpdateRef.current = onPriceUpdate;
+  }, [onPriceUpdate]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -286,90 +296,57 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     chartRef.current = chart;
     setChartReady(true);
 
-    const fetchPythHistory = async () => {
+    const loadHistory = async () => {
       try {
-        const to = Math.floor(Date.now() / 1000);
-        const from = to - 60 * 60 * 4;
-        const symbol = 'Crypto.BTC/USD';
-        const response = await fetch(
-          `${PYTH_BENCHMARK_URL}/history?symbol=${symbol}&resolution=1&from=${from}&to=${to}`,
+        const candles = await fetchMinuteCandles(asset, HISTORY_MINUTES);
+        if (!active || !candles.length) return;
+        const formatted = candles.map(([ms, open, high, low, close]) =>
+          currentMode === 'advanced'
+            ? { time: (ms / 1000) as any, open, high, low, close }
+            : { time: (ms / 1000) as any, value: close },
         );
-        const result = await response.json();
-        if (result.s === 'ok' && active) {
-          const formatted = result.t.map((timestamp: number, index: number) => {
-            if (currentMode === 'advanced') {
-              return {
-                time: timestamp as any,
-                open: Number(result.o[index] || result.c[index]),
-                high: Number(result.h[index] || result.c[index]),
-                low: Number(result.l[index] || result.c[index]),
-                close: Number(result.c[index]),
-              };
-            }
-            return {
-              time: timestamp as any,
-              value: Number(result.c[index]),
-            };
-          });
-          series.setData(formatted);
-          const nextPrice = result.c[result.c.length - 1] ?? null;
-          setCurrentPrice(nextPrice);
-          onPriceUpdate?.(nextPrice);
-          chart.timeScale().fitContent();
-        }
+        series.setData(formatted as any);
+        const nextPrice = candles[candles.length - 1][4] ?? null;
+        setCurrentPrice(nextPrice);
+        onPriceUpdateRef.current?.(nextPrice);
+        chart.timeScale().fitContent();
       } catch (error) {
-        if (active) console.error('Failed to fetch Pyth history:', error);
+        if (active) console.error('Failed to fetch price history:', error);
       }
     };
 
-    fetchPythHistory();
+    void loadHistory();
 
-    const hermes = new HermesClient(PYTH_HERMES_URL, {});
-    let interval: NodeJS.Timeout | null = null;
+    const interval = setInterval(async () => {
+      if (!active) return;
+      try {
+        const nextPrice = await fetchLivePrice(asset);
+        if (!active || nextPrice === null) return;
+        const nextTime = Math.floor(Date.now() / 1000) as any;
 
-    const startStreaming = async () => {
-      interval = setInterval(async () => {
-        if (!active) return;
-        try {
-          const updates = await hermes.getLatestPriceUpdates([PYTH_BTC_ID]);
-          if (updates?.parsed?.length) {
-            const priceData = updates.parsed[0].price;
-            const nextTime = Math.floor(Date.now() / 1000) as any;
-            const nextPrice = Number(priceData.price) * Math.pow(10, priceData.expo);
-
-            if (currentMode === 'basic') {
-              (series as ISeriesApi<'Area'>).update({
-                time: nextTime,
-                value: nextPrice,
-              });
-            } else {
-              (series as unknown as ISeriesApi<'Candlestick'>).update({
-                time: nextTime,
-                open: nextPrice,
-                high: nextPrice,
-                low: nextPrice,
-                close: nextPrice,
-              });
-            }
-
-            setCurrentPrice((previous) => {
-              if (previous) {
-                setPriceChange(((nextPrice - previous) / previous) * 100);
-              }
-              return nextPrice;
-            });
-
-            onPriceUpdate?.(nextPrice);
-            setIsLive(true);
-          }
-        } catch (error) {
-          console.error('Pyth stream error:', error);
-          if (active) setIsLive(false);
+        if (currentMode === 'basic') {
+          (series as ISeriesApi<'Area'>).update({ time: nextTime, value: nextPrice });
+        } else {
+          (series as unknown as ISeriesApi<'Candlestick'>).update({
+            time: nextTime,
+            open: nextPrice,
+            high: nextPrice,
+            low: nextPrice,
+            close: nextPrice,
+          });
         }
-      }, 2000);
-    };
 
-    void startStreaming();
+        setCurrentPrice((previous) => {
+          if (previous) setPriceChange(((nextPrice - previous) / previous) * 100);
+          return nextPrice;
+        });
+        onPriceUpdateRef.current?.(nextPrice);
+        setIsLive(true);
+      } catch (error) {
+        console.error('Price feed error:', error);
+        if (active) setIsLive(false);
+      }
+    }, LIVE_POLL_MS);
 
     const resizeObserver = new ResizeObserver(() => {
       if (chartContainerRef.current) {
@@ -382,13 +359,13 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     return () => {
       active = false;
       resizeObserver.disconnect();
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
       chart.remove();
       seriesRef.current = null;
       chartRef.current = null;
       setChartReady(false);
     };
-  }, [chartMode]);
+  }, [chartMode, asset]);
 
   // Secondary effect to sync overlays without destroying the whole chart/canvas
   useEffect(() => {
@@ -407,7 +384,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: 'Strike',
+        title: 'Open',
       });
     }
 
@@ -434,11 +411,11 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div>
             <div className="text-[0.68rem] uppercase tracking-[0.34em] text-[var(--accent-gold)]">
-              Bitcoin Market Pulse
+              DreamDEX Index Pulse
             </div>
             <div className="mt-3 flex items-end gap-3">
               <h2 className="font-heading text-[clamp(2rem,3vw,3.5rem)] font-semibold tracking-[-0.06em] text-[var(--text-primary)]">
-                BTC / USD
+                {asset} / USD
               </h2>
               {isLive ? (
                 <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(245,185,66,0.16)] bg-[rgba(245,185,66,0.08)] px-3 py-1 text-[0.66rem] uppercase tracking-[0.26em] text-[var(--accent-gold)]">
@@ -459,11 +436,11 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                 {chartMode === 'basic' ? 'Advanced' : 'Basic'}
               </button>
               <a
-                href="https://www.tradingview.com/chart/?symbol=PYTH:BTCUSD"
+                href="https://dreamdex.somnia.network"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] text-[var(--text-secondary)] transition hover:border-[rgba(59,130,246,0.18)] hover:text-[var(--text-primary)]"
-                title="Open in TradingView"
+                title="Open DreamDEX"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
@@ -481,7 +458,14 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                   value={`${priceChange >= 0 ? '+' : '-'}${Math.abs(priceChange).toFixed(3)}%`}
                   accent={priceChange >= 0 ? 'success' : 'danger'}
                 />
-                {latestStrike ? <StatPill label="Strike" value={`$${latestStrike.toFixed(2)}`} accent="core" /> : null}
+                {latestStrike ? <StatPill label="Open" value={`$${latestStrike.toFixed(2)}`} accent="core" /> : null}
+                {latestStrike && currentPrice ? (
+                  <StatPill
+                    label="vs Open"
+                    value={`${currentPrice >= latestStrike ? '+' : '-'}${Math.abs((currentPrice / latestStrike - 1) * 100).toFixed(3)}%`}
+                    accent={currentPrice >= latestStrike ? 'success' : 'danger'}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
