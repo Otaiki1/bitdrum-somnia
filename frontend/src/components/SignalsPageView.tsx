@@ -111,7 +111,7 @@ export function SignalsPageView() {
                     : 'Locating the live DreamDEX Up/Down window for this cadence.')}
               </p>
             </Panel>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="flex flex-wrap gap-3">
               <StatPill label="Direction" value={direction} accent={direction === 'UP' ? 'success' : direction === 'DOWN' ? 'danger' : 'core'} />
               <StatPill label="Hurdle" value={pct(hurdle)} accent="neutral" />
               <StatPill label="Spread" value={snap?.spread === null || snap?.spread === undefined ? '--' : `${(snap.spread * 100).toFixed(1)}¢`} accent="gold" />

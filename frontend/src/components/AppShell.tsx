@@ -11,7 +11,7 @@ import { COLLATERAL_SYMBOL } from '../lib/dreamdex/client';
 
 const navItems = [
   { href: '/arena', label: 'Arena', icon: LayoutGrid },
-  { href: '/signals', label: 'The Core', icon: Radar },
+  { href: '/signals', label: 'Edge', icon: Radar },
   { href: '/portfolio', label: 'Portfolio', icon: Wallet },
 ];
 
