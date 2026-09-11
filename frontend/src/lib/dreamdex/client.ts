@@ -10,6 +10,7 @@
  * the symbol registry load costs ~15s against the testnet indexer.
  */
 import type { Address, Chain, WalletClient } from "viem";
+import { writeContract as viemWriteContract } from "viem/actions";
 import {
   SomniaMarkets,
   SOMNIA_TESTNET_ADDRESSES,
@@ -59,10 +60,25 @@ export function getExchange(): SomniaMarkets {
   return exchange;
 }
 
-/** Turn the read-only exchange into a signer bound to the connected wallet. */
+/**
+ * Turn the read-only exchange into a signer bound to the connected wallet.
+ *
+ * The SDK's injected-wallet path hardcodes `gas: 10M` and fixed EIP-1559 fees
+ * into every `eth_sendTransaction`, which MetaMask rejects with -32602
+ * ("Invalid parameters"). Injected wallets estimate gas and fees themselves,
+ * so we strip those fields before the request reaches the wallet.
+ */
 export function attachWallet(walletClient: WalletClient, address: Address): SomniaMarkets {
   const ex = getExchange();
-  ex.setSigner({ walletClient, account: address });
+  type WriteArgs = Parameters<typeof viemWriteContract>[1];
+  const injected = walletClient.extend((client) => ({
+    writeContract: ((args: WriteArgs) => {
+      const { gas: _gas, maxFeePerGas: _maxFee, maxPriorityFeePerGas: _tip, ...rest } = args;
+      void _gas; void _maxFee; void _tip;
+      return viemWriteContract(client, rest as WriteArgs);
+    }) as WalletClient["writeContract"],
+  }));
+  ex.setSigner({ walletClient: injected as unknown as WalletClient, account: address });
   return ex;
 }
 
