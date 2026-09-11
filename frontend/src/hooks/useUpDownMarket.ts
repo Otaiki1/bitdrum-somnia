@@ -33,7 +33,12 @@ export function useUpDownMarket(asset: Asset, cadence: CadenceSec, refreshMs = 2
           marketId = market?.marketId ?? null;
         }
         if (!market) {
-          if (!cancelled) { setSnap(null); setSignal(null); }
+          // Window handoff: keep the expiring snapshot on screen (the panel shows
+          // it as LOCKING) rather than flashing back to "searching" for a tick.
+          if (!cancelled) {
+            setSnap((prev) => (prev && Number(prev.market.expiry) * 1000 > Date.now() - 5000 ? prev : null));
+            setSignal(null);
+          }
           return;
         }
         if (Date.now() - candles.current.at > 30_000) {
