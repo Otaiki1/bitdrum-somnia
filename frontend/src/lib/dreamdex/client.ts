@@ -45,11 +45,13 @@ export const BITDRUM_BUILDER = process.env.NEXT_PUBLIC_BITDRUM_BUILDER as
   | `0x${string}`
   | undefined;
 
-let exchange: SomniaMarkets | null = null;
+// Kept on globalThis so a dev-server hot reload of this module does not mint a
+// fresh, signer-less exchange while React still thinks the wallet is attached.
+const g = globalThis as unknown as { __bitdrumExchange?: SomniaMarkets };
 
 export function getExchange(): SomniaMarkets {
-  if (!exchange) {
-    exchange = new SomniaMarkets({
+  if (!g.__bitdrumExchange) {
+    g.__bitdrumExchange = new SomniaMarkets({
       indexerUrl: DREAMDEX_TESTNET.indexerUrl,
       chain: DREAMDEX_TESTNET.chain,
       wsRpcUrl: DREAMDEX_TESTNET.wsRpcUrl,
@@ -57,7 +59,19 @@ export function getExchange(): SomniaMarkets {
       priceFeed: DREAMDEX_TESTNET.priceFeed,
     });
   }
-  return exchange;
+  return g.__bitdrumExchange;
+}
+
+/** Address the exchange will sign with, or undefined when no wallet is attached. */
+export function signerAddress(): Address | undefined {
+  return getExchange().walletAddress;
+}
+
+/** Throws a user-facing error if the exchange cannot sign. */
+export function requireSigner(): SomniaMarkets {
+  const ex = getExchange();
+  if (!ex.walletAddress) throw new Error("Wallet not attached — reconnect your wallet and try again.");
+  return ex;
 }
 
 /**

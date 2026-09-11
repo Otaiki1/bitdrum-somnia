@@ -1,8 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { connectBitdrumWallet, type BitdrumWallet } from '../utils/bitdrum';
-import { attachWallet, detachWallet } from '../lib/dreamdex/client';
+import { attachWallet, detachWallet, signerAddress } from '../lib/dreamdex/client';
 
 type BitdrumWalletContextValue = {
   wallet: BitdrumWallet | null;
@@ -22,6 +22,15 @@ export function BitdrumWalletProvider({ children }: { children: React.ReactNode 
   const [wallet, setWallet] = useState<BitdrumWallet | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep the DreamDEX signer in step with the wallet state, including after a
+  // hot reload re-creates the exchange singleton underneath a connected wallet.
+  useEffect(() => {
+    if (!wallet) return;
+    if (signerAddress()?.toLowerCase() !== wallet.address.toLowerCase()) {
+      attachWallet(wallet.walletClient, wallet.address);
+    }
+  }, [wallet]);
 
   const connect = async () => {
     if (connecting) {

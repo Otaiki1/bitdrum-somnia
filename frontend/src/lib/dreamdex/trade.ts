@@ -10,7 +10,7 @@ import {
   ORDER_TYPE,
   type BinaryStakeQuote,
 } from "@somnia-chain/markets-sdk";
-import { getExchange, BITDRUM_BUILDER, COLLATERAL_ADDRESS, COLLATERAL_DECIMALS } from "./client";
+import { getExchange, requireSigner, BITDRUM_BUILDER, COLLATERAL_ADDRESS, COLLATERAL_DECIMALS } from "./client";
 import type { UpDownSnapshot } from "./markets";
 
 export type Direction = "UP" | "DOWN";
@@ -74,7 +74,7 @@ export async function quoteStake(
 
 /** Execute a quoted stake. Requires attachWallet() to have been called. */
 export async function placeStake(snap: UpDownSnapshot, quote: StakeQuoteView) {
-  const ex = getExchange();
+  const ex = requireSigner();
   const res = await ex.trader.placeOrder({
     pool: snap.pool,
     side: quote.raw.side,
@@ -94,13 +94,13 @@ export async function placeStake(snap: UpDownSnapshot, quote: StakeQuoteView) {
 
 /** Redeem winning shares after resolution. */
 export async function redeemWinnings(marketId: Hex, amountRaw: bigint, outcomeIdx?: 0 | 1) {
-  const ex = getExchange();
+  const ex = requireSigner();
   return ex.trader.redeem({ marketId, amount: amountRaw, ...(outcomeIdx === undefined ? {} : { outcomeIdx }), autoApprove: true });
 }
 
 /** Testnet collateral faucet (TestUSDC on Shannon). */
 export async function claimTestCollateral() {
-  const ex = getExchange();
+  const ex = requireSigner();
   return ex.trader.faucet();
 }
 

@@ -14,7 +14,7 @@ import {
 import { useBitdrumWallet } from './BitdrumWalletProvider';
 import { useCollateralBalance, COLLATERAL_BALANCE_KEY } from '../hooks/useCollateralBalance';
 import { DREAM_POSITIONS_KEY } from '../hooks/useDreamPositions';
-import { COLLATERAL_SYMBOL, explorerTxUrl } from '../lib/dreamdex/client';
+import { COLLATERAL_SYMBOL, attachWallet, explorerTxUrl, signerAddress } from '../lib/dreamdex/client';
 import type { CadenceSec, UpDownSnapshot } from '../lib/dreamdex/markets';
 import { claimTestCollateral, placeStake, quoteStake, type StakeQuoteView } from '../lib/dreamdex/trade';
 import type { EdgeSignal } from '../lib/signal/fairValue';
@@ -43,7 +43,14 @@ export const TradePanel = ({
   onTradeSubmitted?: (record: TradeExecutionRecord) => void;
 }) => {
   const queryClient = useQueryClient();
-  const { address, authenticated, connecting, connect } = useBitdrumWallet();
+  const { wallet, address, authenticated, connecting, connect } = useBitdrumWallet();
+
+  // Belt and braces: make sure the SDK signs with the wallet on screen.
+  const ensureSigner = () => {
+    if (wallet && signerAddress()?.toLowerCase() !== wallet.address.toLowerCase()) {
+      attachWallet(wallet.walletClient, wallet.address);
+    }
+  };
   const { balance } = useCollateralBalance(address);
 
   const [stake, setStake] = useState('5');
@@ -111,6 +118,7 @@ export const TradePanel = ({
     setError(null);
     setIsFauceting(true);
     try {
+      ensureSigner();
       await claimTestCollateral();
       await queryClient.invalidateQueries({ queryKey: [COLLATERAL_BALANCE_KEY] });
     } catch (caughtError: unknown) {
@@ -157,6 +165,7 @@ export const TradePanel = ({
     onTradeSubmitted?.(base);
 
     try {
+      ensureSigner();
       const res = await placeStake(snap, quote);
       const confirmed: TradeExecutionRecord = {
         ...base,
