@@ -25,7 +25,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { authenticated, address, connect, connecting } = useBitdrumWallet();
+  const { authenticated, address, connect, connecting, error: walletError } = useBitdrumWallet();
   const { balance } = useCollateralBalance(address);
 
   return (
@@ -67,9 +67,12 @@ export function AppShell({
                   {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {COLLATERAL_SYMBOL}
                 </div>
               )}
+              {walletError && !authenticated ? (
+                <p className="mt-3 text-[0.75rem] leading-5 text-[var(--state-down)] break-words">{walletError}</p>
+              ) : null}
               {!authenticated ? (
                 <button
-                  onClick={() => void connect()}
+                  onClick={() => void connect().catch(() => {})}
                   disabled={connecting}
                   className="cta-press mt-5 rounded-full bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-4 py-2 text-sm text-[#140c00] disabled:opacity-60"
                 >

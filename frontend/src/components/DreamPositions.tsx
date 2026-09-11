@@ -155,7 +155,7 @@ export function DreamPositionsList({ compact = false, limit }: { compact?: boole
       <div className="rounded-[1.5rem] border border-dashed border-[color:var(--border-subtle)] px-4 py-10 text-center">
         <p className="text-[0.68rem] uppercase tracking-[0.34em] text-[var(--text-muted)]">Connect to see positions</p>
         <button
-          onClick={() => void connect()}
+          onClick={() => void connect().catch(() => {})}
           className="cta-press mt-5 rounded-full bg-[linear-gradient(135deg,var(--accent-gold),#d97706)] px-5 py-3 text-sm text-[#140c00]"
         >
           Connect wallet
