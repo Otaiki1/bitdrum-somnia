@@ -46,7 +46,12 @@ export function BitdrumWalletProvider({ children }: { children: React.ReactNode 
       attachWallet(nextWallet.walletClient, nextWallet.address);
       setWallet(nextWallet);
     } catch (caughtError: any) {
-      setError(caughtError?.message || 'Failed to connect wallet');
+      const raw: string = caughtError?.message || 'Failed to connect wallet';
+      setError(
+        raw.includes('KeyRing is locked')
+          ? 'Your wallet extension is locked (Keplr). Unlock it — or use MetaMask — and connect again.'
+          : raw,
+      );
       throw caughtError;
     } finally {
       setConnecting(false);

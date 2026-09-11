@@ -16,13 +16,20 @@ import { useCollateralBalance, COLLATERAL_BALANCE_KEY } from '../hooks/useCollat
 import { DREAM_POSITIONS_KEY } from '../hooks/useDreamPositions';
 import { COLLATERAL_SYMBOL, attachWallet, explorerTxUrl, signerAddress } from '../lib/dreamdex/client';
 import type { CadenceSec, UpDownSnapshot } from '../lib/dreamdex/markets';
-import { claimTestCollateral, placeStake, quoteStake, type StakeQuoteView } from '../lib/dreamdex/trade';
+import { claimTestCollateral, DEFAULT_SLIPPAGE_BPS, placeStake, quoteStake, type StakeQuoteView } from '../lib/dreamdex/trade';
 import type { EdgeSignal } from '../lib/signal/fairValue';
 import { formatTimeframe, type BitdrumDirection, type TradeExecutionRecord } from '../utils/bitdrum';
 import { Eyebrow, Panel, StatPill } from './ObsidianPrimitives';
 
 /** Trading is disabled this close to expiry — the tx would race the lock. */
 const LOCK_GUARD_SECONDS = 5;
+
+/** How far the IOC may chase a moving book. Fills still land at resting prices. */
+const TOLERANCES: { label: string; bps: bigint; hint: string }[] = [
+  { label: 'Tight', bps: 300n, hint: '3% — may miss if the book moves while you confirm' },
+  { label: 'Normal', bps: DEFAULT_SLIPPAGE_BPS, hint: '15% — covers a typical wallet confirmation' },
+  { label: 'Wide', bps: 4000n, hint: '40% — fills through fast re-quotes; fewer shares sized' },
+];
 
 const fmtUsd = (n: number, digits = 2) =>
   n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -51,10 +58,12 @@ export const TradePanel = ({
       attachWallet(wallet.walletClient, wallet.address);
     }
   };
-  const { balance } = useCollateralBalance(address);
+  const { balance, gas } = useCollateralBalance(address);
+  const needsGas = authenticated && gas !== null && gas <= 0;
 
   const [stake, setStake] = useState('5');
   const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
+  const [slippageBps, setSlippageBps] = useState<bigint>(DEFAULT_SLIPPAGE_BPS);
   const [quote, setQuote] = useState<StakeQuoteView | null>(null);
   const [quoteState, setQuoteState] = useState<'idle' | 'loading' | 'too-small' | 'no-liquidity' | 'error'>('idle');
   const [isPending, setIsPending] = useState(false);
@@ -89,7 +98,7 @@ export const TradePanel = ({
     }
     let cancelled = false;
     setQuoteState('loading');
-    quoteStake(snap, previewDirection, numericStake)
+    quoteStake(snap, previewDirection, numericStake, slippageBps)
       .then((q) => {
         if (cancelled) return;
         setQuote(q);
@@ -103,7 +112,7 @@ export const TradePanel = ({
     return () => {
       cancelled = true;
     };
-  }, [snap, previewDirection, numericStake, stakeValid]);
+  }, [snap, previewDirection, numericStake, stakeValid, slippageBps]);
 
   const handleConnect = async () => {
     setError(null);
@@ -115,6 +124,10 @@ export const TradePanel = ({
   };
 
   const handleFaucet = async () => {
+    if (needsGas) {
+      setError('This wallet has no STT for gas on Somnia Shannon. Get some from the Somnia faucet first.');
+      return;
+    }
     setError(null);
     setIsFauceting(true);
     try {
@@ -139,6 +152,10 @@ export const TradePanel = ({
     }
     if (locking) {
       setError('Window is locking — wait for the next one.');
+      return;
+    }
+    if (needsGas) {
+      setError('This wallet has no STT for gas on Somnia Shannon. Get some from the Somnia faucet first.');
       return;
     }
 
@@ -166,9 +183,10 @@ export const TradePanel = ({
 
     try {
       ensureSigner();
-      const res = await placeStake(snap, quote);
+      const res = await placeStake(snap, quote.direction, numericStake, slippageBps);
       const confirmed: TradeExecutionRecord = {
         ...base,
+        stake: fmtUsd(res.quote.maxLoss),
         id: res.hash,
         txHash: res.hash,
         explorerUrl: explorerTxUrl(res.hash),
@@ -209,6 +227,9 @@ export const TradePanel = ({
   const formatErrorMessage = (msg: string) => {
     if (!msg) return '';
     if (msg.includes('User rejected') || msg.includes('user rejected')) return 'Order cancelled in wallet';
+    if (msg.includes('ImmediateOrCancelNoFill'))
+      return 'The book moved before your order landed — no fill, nothing charged. Widen the fill tolerance or confirm faster.';
+    if (msg.includes('account does not exist')) return 'Somnia rejected the tx: this wallet has no STT for gas on Shannon. Fund it from the Somnia faucet, then retry.';
     if (msg.toLowerCase().includes('insufficient')) return `Insufficient ${COLLATERAL_SYMBOL} — hit the faucet`;
     return msg.length > 200 ? `${msg.slice(0, 200)}...` : msg;
   };
@@ -340,6 +361,7 @@ export const TradePanel = ({
             <span className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Wallet</span>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <StatPill label="Mode" value={authenticated ? 'Connected' : 'Offline'} accent={authenticated ? 'success' : 'neutral'} />
+              {gas !== null ? <StatPill label="Gas" value={`${gas.toFixed(3)} STT`} accent={needsGas ? 'danger' : 'neutral'} /> : null}
               {balance !== null ? <StatPill label="Balance" value={`${fmtUsd(balance)} ${COLLATERAL_SYMBOL}`} accent="neutral" /> : null}
               {authenticated ? (
                 <button
@@ -354,6 +376,16 @@ export const TradePanel = ({
             </div>
           </div>
         </div>
+
+        {needsGas ? (
+          <div className="rounded-[1.4rem] border border-[rgba(245,185,66,0.25)] bg-[rgba(245,185,66,0.08)] px-4 py-3 text-[0.8rem] leading-6 text-[var(--text-primary)]">
+            No STT for gas — Somnia won&apos;t accept a transaction from an unfunded account.{' '}
+            <a href="https://testnet.somnia.network/" target="_blank" rel="noopener noreferrer" className="underline text-[var(--accent-gold)]">
+              Get Shannon STT from the Somnia faucet
+            </a>
+            , then come back for TestUSDC.
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-4">
           {(['UP', 'DOWN'] as BitdrumDirection[]).map((direction) => {
@@ -384,6 +416,24 @@ export const TradePanel = ({
               </button>
             );
           })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 px-1">
+          <span className="text-[0.58rem] uppercase tracking-[0.24em] text-[var(--text-muted)]">Fill tolerance</span>
+          {TOLERANCES.map((t) => (
+            <button
+              key={t.label}
+              onClick={() => setSlippageBps(t.bps)}
+              title={t.hint}
+              className={`rounded-full border px-3 py-1 text-[0.62rem] uppercase tracking-[0.2em] transition ${
+                slippageBps === t.bps
+                  ? 'border-[rgba(245,185,66,0.24)] bg-[rgba(245,185,66,0.08)] text-[var(--accent-gold)]'
+                  : 'border-[color:var(--border-subtle)] bg-[rgba(255,255,255,0.03)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         <button

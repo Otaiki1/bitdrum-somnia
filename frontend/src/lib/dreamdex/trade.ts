@@ -11,7 +11,7 @@ import {
   type BinaryStakeQuote,
 } from "@somnia-chain/markets-sdk";
 import { getExchange, requireSigner, BITDRUM_BUILDER, COLLATERAL_ADDRESS, COLLATERAL_DECIMALS } from "./client";
-import type { UpDownSnapshot } from "./markets";
+import { snapshotUpDown, type UpDownSnapshot } from "./markets";
 
 export type Direction = "UP" | "DOWN";
 const sideOf = (d: Direction): "BUY_YES" | "BUY_NO" => (d === "UP" ? "BUY_YES" : "BUY_NO");
@@ -29,7 +29,6 @@ export type StakeQuoteView = {
   profitMultiple: number;
 };
 
-/** Quote a stake (human collateral units, e.g. 5 USDC) against the live book. */
 const bookParamsCache = new Map<string, Promise<Awaited<ReturnType<ReturnType<typeof getExchange>["client"]["getBinaryBookParams"]>>>>();
 
 /** Tick / lot / min-quantity for a pool — immutable per pool, so cache it. */
@@ -44,11 +43,21 @@ export function getBookParams(pool: Address) {
   return p;
 }
 
+/**
+ * Protective-limit cushion for interactive wallets. The DreamDEX market maker
+ * re-quotes every few seconds (we measured 17¢ moves in ~5s) and a wallet
+ * confirmation takes ~10s, so the SDK's 3% default routinely lands behind the
+ * book and the IOC crosses nothing. Fills still happen at resting prices —
+ * the cushion only decides how far the sweep may chase, never what you pay.
+ */
+export const DEFAULT_SLIPPAGE_BPS = 1500n;
+
+/** Quote a stake (human collateral units, e.g. 5 USDC) against the live book. */
 export async function quoteStake(
   snap: UpDownSnapshot,
   direction: Direction,
   stakeHuman: number,
-  slippageBps = 300n,
+  slippageBps = DEFAULT_SLIPPAGE_BPS,
 ): Promise<StakeQuoteView | null> {
   const dec = snap.quoteDecimals;
   const params = await getBookParams(snap.pool);
@@ -72,11 +81,31 @@ export async function quoteStake(
   };
 }
 
-/** Execute a quoted stake. Requires attachWallet() to have been called. */
-export async function placeStake(snap: UpDownSnapshot, quote: StakeQuoteView) {
+export type PlaceStakeResult = {
+  hash: string;
+  filledShares: number;
+  fullyFilled: boolean;
+  /** The quote the order was actually sized from (fresh book at send time). */
+  quote: StakeQuoteView;
+};
+
+/**
+ * Execute a stake. Re-snapshots the book immediately before sending so the
+ * protective limit reflects the market *now*, not when the user first looked.
+ * Requires attachWallet() to have been called.
+ */
+export async function placeStake(
+  snap: UpDownSnapshot,
+  direction: Direction,
+  stakeHuman: number,
+  slippageBps = DEFAULT_SLIPPAGE_BPS,
+): Promise<PlaceStakeResult> {
   const ex = requireSigner();
+  const fresh = await snapshotUpDown(snap.market).catch(() => snap);
+  const quote = await quoteStake(fresh, direction, stakeHuman, slippageBps);
+  if (!quote) throw new Error("No fillable liquidity for this stake right now — the book just moved.");
   const res = await ex.trader.placeOrder({
-    pool: snap.pool,
+    pool: fresh.pool,
     side: quote.raw.side,
     price: quote.raw.yesPrice,
     quantity: quote.raw.quantity,
@@ -84,11 +113,12 @@ export async function placeStake(snap: UpDownSnapshot, quote: StakeQuoteView) {
     autoApprove: true,
     ...(BITDRUM_BUILDER ? { builder: BITDRUM_BUILDER } : {}),
   });
-  const filled = res.fills.reduce((s, f) => s + f.quantityFilled, 0n);
+  const filled = res.fills.reduce((sum, f) => sum + f.quantityFilled, 0n);
   return {
     hash: res.hash,
-    filledShares: toHuman(filled, snap.quoteDecimals),
+    filledShares: toHuman(filled, fresh.quoteDecimals),
     fullyFilled: filled === quote.raw.quantity,
+    quote,
   };
 }
 
@@ -102,6 +132,12 @@ export async function redeemWinnings(marketId: Hex, amountRaw: bigint, outcomeId
 export async function claimTestCollateral() {
   const ex = requireSigner();
   return ex.trader.faucet();
+}
+
+/** Wallet's native STT balance (gas) in human units. */
+export async function readGasBalance(address: Address): Promise<number> {
+  const raw = await getExchange().client.getViemClient().getBalance({ address });
+  return toHuman(raw, 18);
 }
 
 /** Wallet's collateral (TestUSDC) balance in human units. */

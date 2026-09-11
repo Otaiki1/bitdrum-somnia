@@ -15,13 +15,30 @@ import {
   SOMNIA_EXPLORER_BASE_URL,
 } from './somnia';
 
+type Eip1193Provider = {
+  request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
+  on?(event: string, handler: (...args: unknown[]) => void): void;
+  isMetaMask?: boolean;
+  isKeplr?: boolean;
+  providers?: Eip1193Provider[];
+};
+
 declare global {
   interface Window {
-    ethereum?: {
-      request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
-      on?(event: string, handler: (...args: unknown[]) => void): void;
-    };
+    ethereum?: Eip1193Provider;
   }
+}
+
+/**
+ * Several extensions (MetaMask, Keplr, Rabby, …) each inject a provider and
+ * fight over `window.ethereum`. Prefer MetaMask when it is present; a locked
+ * Keplr otherwise throws "KeyRing is locked" before we can even ask for accounts.
+ */
+export function pickInjectedProvider(): Eip1193Provider | undefined {
+  const root = window.ethereum;
+  if (!root) return undefined;
+  const candidates = root.providers?.length ? root.providers : [root];
+  return candidates.find((p) => p.isMetaMask && !p.isKeplr) ?? candidates.find((p) => !p.isKeplr) ?? root;
 }
 
 /** Native STT uses 18 decimals. */
@@ -211,7 +228,7 @@ async function ensureSomniaChain(walletClient: WalletClient) {
   try {
     await walletClient.switchChain({ id: ACTIVE_SOMNIA_NETWORK.chainId });
   } catch {
-    await (window.ethereum as any).request({
+    await pickInjectedProvider()!.request({
       method: 'wallet_addEthereumChain',
       params: [ACTIVE_SOMNIA_NETWORK],
     });
@@ -235,7 +252,7 @@ export async function connectBitdrumWallet(): Promise<BitdrumWallet> {
 
   const walletClient = createWalletClient({
     chain,
-    transport: custom(window.ethereum!),
+    transport: custom(pickInjectedProvider()!),
   });
 
   const publicClient = createPublicClient({
