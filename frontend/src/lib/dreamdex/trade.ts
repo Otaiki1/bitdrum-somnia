@@ -104,6 +104,12 @@ export async function claimTestCollateral() {
   return ex.trader.faucet();
 }
 
+/** Wallet's native STT balance (gas) in human units. */
+export async function readGasBalance(address: Address): Promise<number> {
+  const raw = await getExchange().client.getViemClient().getBalance({ address });
+  return toHuman(raw, 18);
+}
+
 /** Wallet's collateral (TestUSDC) balance in human units. */
 export async function readCollateralBalance(address: Address): Promise<number> {
   const ex = getExchange();

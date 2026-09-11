@@ -51,7 +51,8 @@ export const TradePanel = ({
       attachWallet(wallet.walletClient, wallet.address);
     }
   };
-  const { balance } = useCollateralBalance(address);
+  const { balance, gas } = useCollateralBalance(address);
+  const needsGas = authenticated && gas !== null && gas <= 0;
 
   const [stake, setStake] = useState('5');
   const [previewDirection, setPreviewDirection] = useState<BitdrumDirection>('UP');
@@ -115,6 +116,10 @@ export const TradePanel = ({
   };
 
   const handleFaucet = async () => {
+    if (needsGas) {
+      setError('This wallet has no STT for gas on Somnia Shannon. Get some from the Somnia faucet first.');
+      return;
+    }
     setError(null);
     setIsFauceting(true);
     try {
@@ -139,6 +144,10 @@ export const TradePanel = ({
     }
     if (locking) {
       setError('Window is locking — wait for the next one.');
+      return;
+    }
+    if (needsGas) {
+      setError('This wallet has no STT for gas on Somnia Shannon. Get some from the Somnia faucet first.');
       return;
     }
 
@@ -209,6 +218,7 @@ export const TradePanel = ({
   const formatErrorMessage = (msg: string) => {
     if (!msg) return '';
     if (msg.includes('User rejected') || msg.includes('user rejected')) return 'Order cancelled in wallet';
+    if (msg.includes('account does not exist')) return 'Somnia rejected the tx: this wallet has no STT for gas on Shannon. Fund it from the Somnia faucet, then retry.';
     if (msg.toLowerCase().includes('insufficient')) return `Insufficient ${COLLATERAL_SYMBOL} — hit the faucet`;
     return msg.length > 200 ? `${msg.slice(0, 200)}...` : msg;
   };
@@ -340,6 +350,7 @@ export const TradePanel = ({
             <span className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--text-muted)]">Wallet</span>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <StatPill label="Mode" value={authenticated ? 'Connected' : 'Offline'} accent={authenticated ? 'success' : 'neutral'} />
+              {gas !== null ? <StatPill label="Gas" value={`${gas.toFixed(3)} STT`} accent={needsGas ? 'danger' : 'neutral'} /> : null}
               {balance !== null ? <StatPill label="Balance" value={`${fmtUsd(balance)} ${COLLATERAL_SYMBOL}`} accent="neutral" /> : null}
               {authenticated ? (
                 <button
@@ -354,6 +365,16 @@ export const TradePanel = ({
             </div>
           </div>
         </div>
+
+        {needsGas ? (
+          <div className="rounded-[1.4rem] border border-[rgba(245,185,66,0.25)] bg-[rgba(245,185,66,0.08)] px-4 py-3 text-[0.8rem] leading-6 text-[var(--text-primary)]">
+            No STT for gas — Somnia won&apos;t accept a transaction from an unfunded account.{' '}
+            <a href="https://testnet.somnia.network/" target="_blank" rel="noopener noreferrer" className="underline text-[var(--accent-gold)]">
+              Get Shannon STT from the Somnia faucet
+            </a>
+            , then come back for TestUSDC.
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-4">
           {(['UP', 'DOWN'] as BitdrumDirection[]).map((direction) => {
