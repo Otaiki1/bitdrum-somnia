@@ -1,13 +1,93 @@
-# BitDrum Protocol
+# BitDrum × DreamDEX
 
-> **Real-time, reactive Bitcoin direction markets on Somnia EVM.** Built natively on Somnia's Multistream Consensus infrastructure — not ported from another chain.
+> **A signal layer and one-tap front end for DreamDEX Event Contracts on Somnia.** BitDrum prices every live BTC/ETH Up/Down window itself, compares that to what the DreamDEX order book is charging, and turns a stake into a book-sized market order — payout and max loss shown before you sign.
 
 [![Network](https://img.shields.io/badge/network-Somnia%20Shannon-f5b942?style=flat-square)](https://shannon-explorer.somnia.network)
 [![Chain ID](https://img.shields.io/badge/chain%20ID-50312-3b82f6?style=flat-square)](https://shannon-explorer.somnia.network)
+[![Venue](https://img.shields.io/badge/venue-DreamDEX%20Event%20Contracts-22d3ee?style=flat-square)](https://dreamdex.somnia.network)
+[![SDK](https://img.shields.io/badge/%40somnia--chain%2Fmarkets--sdk-0.30.0-3b82f6?style=flat-square)](https://www.npmjs.com/package/@somnia-chain/markets-sdk)
 [![License](https://img.shields.io/badge/license-MIT-22d3ee?style=flat-square)](./LICENSE)
-[![Built with Foundry](https://img.shields.io/badge/built%20with-Foundry-f5b942?style=flat-square)](https://getfoundry.sh)
 
-**BitDrum** lets users stake native STT on whether BTC/USD will finish higher or lower after **60 or 300 seconds**. A protocol-owned liquidity vault guarantees every trade has a counterparty — 24/7, regardless of peer participation. Strike and settlement prices are sourced from an on-chain keeper-fed adapter. Payout rates are computed deterministically from vault liquidity and locked at open time. Settlement is permissionless.
+## What it does
+
+DreamDEX runs rolling **1-minute and 5-minute Up/Down series** for BTC and ETH: each window is a binary market that resolves on whether the Somnia price index closes at or above the window's opening price. BitDrum sits on top of those markets as the trading front end and the signal layer:
+
+| Surface | What you get |
+|---|---|
+| **Arena** | Live index chart with the window's opening price drawn in; the current window's order book; UP / DOWN buttons that quote your stake against the book and route a market (IOC) order to DreamDEX with your own wallet. |
+| **Edge** | The fair-value model: BitDrum's own P(UP) for the live window vs. the book's implied P(UP), the edge between them, and a plain-English rationale. |
+| **Portfolio** | Your DreamDEX positions read straight from the venue, marked to the book, with one-tap redeem once a window resolves. |
+
+No BitDrum backend is required — the frontend talks to the DreamDEX indexer and Somnia Shannon directly through `@somnia-chain/markets-sdk`.
+
+## BitDrum Edge — the model
+
+Over a few minutes BTC log-returns are close to driftless Brownian motion, so the probability the window closes UP is
+
+```
+P(UP) = Φ( ln(S / K) / (σ · √τ) )
+```
+
+- `S` — live Somnia index price
+- `K` — the window's opening price (oracle answer for `reference` markets, the strike for `fixed` markets)
+- `σ` — realized per-minute volatility from the last hour of 1-minute index candles
+- `τ` — minutes left in the window
+
+**Edge** = model P(UP) − market P(UP), where market P(UP) is the YES mid on the DreamDEX book. A call only fires when `|edge|` clears **half the spread plus a 3 % margin**, so it never recommends paying through a wide book. Confidence is damped in the first 20 % of the window (the open has barely been tested) and in the last 5 seconds (fill risk).
+
+The model ignores drift and fees and is deliberately simple. It is a **signal, not a guarantee** — its job is to make a mispriced book legible.
+
+## How a trade works
+
+```
+tap UP / DOWN  →  quoteBinaryStakeOverBook(): walk the live book, size the order,
+                  compute payout-if-win, max loss, and a slippage-cushioned limit
+sign           →  trader.placeOrder({ pool, side, price: yesPrice, quantity, MARKET })
+                  (tagged with NEXT_PUBLIC_BITDRUM_BUILDER when set)
+window closes  →  Somnia oracle resolves the market
+redeem         →  trader.redeem({ marketId, amount, outcomeIdx })  — 1 USDC per winning share
+```
+
+Gotchas the UI handles: stakes below the pool's minimum order size show **Stake too small** instead of failing; trading is disabled in the **last 5 seconds** of a window; orders expire with their market so nothing lingers on the book; the 1-minute series currently has no market-maker liquidity on testnet, so the UI says so and still prices it.
+
+## Business model
+
+DreamDEX lets a front end tag orders with a `builder` address and charge a routing fee. Set `NEXT_PUBLIC_BITDRUM_BUILDER` and every order BitDrum routes is attributed to it — BitDrum earns on flow it originates, without running its own market.
+
+## Run it
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local   # optional: set NEXT_PUBLIC_BITDRUM_BUILDER
+npm run dev                  # http://localhost:3000/arena
+```
+
+Connect an injected EVM wallet on **Somnia Shannon (chain 50312)**. Use the **Faucet** button in the Command Module to mint TestUSDC collateral, then tap UP or DOWN.
+
+Deploy: the frontend is a static Next.js app with no backend — `vercel --cwd frontend` (or import the repo in Vercel with `frontend` as the root directory).
+
+### Code map
+
+```
+frontend/src/lib/dreamdex/client.ts     SDK singleton, attachWallet(), testnet config
+frontend/src/lib/dreamdex/markets.ts    find the live Up/Down window, snapshot book + open + live price
+frontend/src/lib/dreamdex/trade.ts      quoteStake / placeStake / redeem / faucet / collateral balance
+frontend/src/lib/dreamdex/positions.ts  open positions (marked to book) + claimable winners
+frontend/src/lib/signal/fairValue.ts    BitDrum Edge — pure math, no I/O
+frontend/src/hooks/useUpDownMarket.ts   2s refresh; rolls to the next window on expiry
+frontend/src/components/TradePanel.tsx  the Command Module
+```
+
+---
+
+# BitDrum v1 — own market (roadmap)
+
+Everything below is BitDrum's original protocol: its own Bitcoin direction market on Somnia with a protocol-owned liquidity vault, keeper-fed price adapter, indexer, gateway, and AI agent. It remains deployed on Shannon and is the roadmap for a BitDrum-native venue; the hackathon submission above runs entirely on DreamDEX and does not need any of these services.
+
+> **Real-time, reactive Bitcoin direction markets on Somnia EVM.** Built natively on Somnia's Multistream Consensus infrastructure — not ported from another chain.
+
+**BitDrum v1** lets users stake native STT on whether BTC/USD will finish higher or lower after **60 or 300 seconds**. A protocol-owned liquidity vault guarantees every trade has a counterparty — 24/7, regardless of peer participation. Strike and settlement prices are sourced from an on-chain keeper-fed adapter. Payout rates are computed deterministically from vault liquidity and locked at open time. Settlement is permissionless.
 
 ---
 
