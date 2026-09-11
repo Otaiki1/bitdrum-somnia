@@ -2,7 +2,7 @@
  * Write side: BitDrum's one-tap UP / DOWN stake, mapped onto a DreamDEX
  * Event Contract market order (IOC) sized by walking the live book.
  */
-import type { Address, Hex } from "viem";
+import { erc20Abi, type Address, type Hex } from "viem";
 import {
   fromHuman,
   toHuman,
@@ -10,7 +10,7 @@ import {
   ORDER_TYPE,
   type BinaryStakeQuote,
 } from "@somnia-chain/markets-sdk";
-import { ensureMarketsLoaded, BITDRUM_BUILDER } from "./client";
+import { getExchange, BITDRUM_BUILDER, COLLATERAL_ADDRESS, COLLATERAL_DECIMALS } from "./client";
 import type { UpDownSnapshot } from "./markets";
 
 export type Direction = "UP" | "DOWN";
@@ -29,16 +29,29 @@ export type StakeQuoteView = {
   profitMultiple: number;
 };
 
-/** Quote a stake (human collateral units, e.g. 50 USDso) against the live book. */
+/** Quote a stake (human collateral units, e.g. 5 USDC) against the live book. */
+const bookParamsCache = new Map<string, Promise<Awaited<ReturnType<ReturnType<typeof getExchange>["client"]["getBinaryBookParams"]>>>>();
+
+/** Tick / lot / min-quantity for a pool — immutable per pool, so cache it. */
+export function getBookParams(pool: Address) {
+  const key = pool.toLowerCase();
+  let p = bookParamsCache.get(key);
+  if (!p) {
+    p = getExchange().client.getBinaryBookParams(pool);
+    p.catch(() => bookParamsCache.delete(key));
+    bookParamsCache.set(key, p);
+  }
+  return p;
+}
+
 export async function quoteStake(
   snap: UpDownSnapshot,
   direction: Direction,
   stakeHuman: number,
   slippageBps = 300n,
 ): Promise<StakeQuoteView | null> {
-  const ex = await ensureMarketsLoaded();
   const dec = snap.quoteDecimals;
-  const params = await ex.client.getBinaryBookParams(snap.pool);
+  const params = await getBookParams(snap.pool);
   const q = quoteBinaryStakeOverBook(
     snap.book,
     sideOf(direction),
@@ -61,13 +74,14 @@ export async function quoteStake(
 
 /** Execute a quoted stake. Requires attachWallet() to have been called. */
 export async function placeStake(snap: UpDownSnapshot, quote: StakeQuoteView) {
-  const ex = await ensureMarketsLoaded();
+  const ex = getExchange();
   const res = await ex.trader.placeOrder({
     pool: snap.pool,
     side: quote.raw.side,
     price: quote.raw.yesPrice,
     quantity: quote.raw.quantity,
     orderType: ORDER_TYPE.MARKET,
+    autoApprove: true,
     ...(BITDRUM_BUILDER ? { builder: BITDRUM_BUILDER } : {}),
   });
   const filled = res.fills.reduce((s, f) => s + f.quantityFilled, 0n);
@@ -78,16 +92,28 @@ export async function placeStake(snap: UpDownSnapshot, quote: StakeQuoteView) {
   };
 }
 
-/** Redeem winning shares after resolution. SDK derives the winning leg. */
-export async function redeemWinnings(marketId: Hex, amountRaw: bigint) {
-  const ex = await ensureMarketsLoaded();
-  return ex.trader.redeem({ marketId, amount: amountRaw });
+/** Redeem winning shares after resolution. */
+export async function redeemWinnings(marketId: Hex, amountRaw: bigint, outcomeIdx?: 0 | 1) {
+  const ex = getExchange();
+  return ex.trader.redeem({ marketId, amount: amountRaw, ...(outcomeIdx === undefined ? {} : { outcomeIdx }), autoApprove: true });
 }
 
-/** Testnet collateral faucet (TestUSDC / USDso on Shannon). */
+/** Testnet collateral faucet (TestUSDC on Shannon). */
 export async function claimTestCollateral() {
-  const ex = await ensureMarketsLoaded();
+  const ex = getExchange();
   return ex.trader.faucet();
+}
+
+/** Wallet's collateral (TestUSDC) balance in human units. */
+export async function readCollateralBalance(address: Address): Promise<number> {
+  const ex = getExchange();
+  const raw = await ex.client.getViemClient().readContract({
+    address: COLLATERAL_ADDRESS,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [address],
+  });
+  return toHuman(raw, COLLATERAL_DECIMALS);
 }
 
 export type { Address };

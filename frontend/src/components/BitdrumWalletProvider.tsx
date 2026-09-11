@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState } from 'react';
 import { connectBitdrumWallet, type BitdrumWallet } from '../utils/bitdrum';
+import { attachWallet } from '../lib/dreamdex/client';
 
 type BitdrumWalletContextValue = {
   wallet: BitdrumWallet | null;
@@ -32,6 +33,8 @@ export function BitdrumWalletProvider({ children }: { children: React.ReactNode 
 
     try {
       const nextWallet = await connectBitdrumWallet();
+      // Same viem walletClient signs DreamDEX orders, redeems, and faucet calls.
+      attachWallet(nextWallet.walletClient, nextWallet.address);
       setWallet(nextWallet);
     } catch (caughtError: any) {
       setError(caughtError?.message || 'Failed to connect wallet');

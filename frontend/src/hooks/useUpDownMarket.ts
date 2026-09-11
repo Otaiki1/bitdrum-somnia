@@ -37,7 +37,7 @@ export function useUpDownMarket(asset: Asset, cadence: CadenceSec, refreshMs = 2
           return;
         }
         if (Date.now() - candles.current.at > 30_000) {
-          candles.current = { at: Date.now(), rows: (await fetchMinuteCandles(asset, 60)) as Candle[] };
+          candles.current = { at: Date.now(), rows: await fetchMinuteCandles(asset, 60) };
         }
         const s = await snapshotUpDown(market);
         if (cancelled || s.market.marketId !== marketId) return;
