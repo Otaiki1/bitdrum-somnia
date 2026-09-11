@@ -49,7 +49,7 @@ Everything below was verified on Somnia Shannon during the build, not mocked:
 | Order book populated, quote sized off it | ✅ YES 0.731 / NO 0.296, spread 2.7¢ → 5 USDC buys 6.64 shares (+33 %) |
 | Edge signal fired unprompted | ✅ *"UP 15 % — model 38.5 % vs market 31.9 %: UP underpriced by 6.6 %"* |
 | Positions / claimables for a real trader | ✅ statuses map to LIVE · SETTLING · WIN · LOSS · VOID |
-| Injected-wallet writes | ✅ after stripping the SDK's hardcoded gas/fees, which MetaMask rejects |
+| Live order from MetaMask filled on DreamDEX | ✅ BUY UP on BTC 5m: 4.43 USDC escrowed for 6.31 shares — fills landed at resting prices below the protective limit |
 
 > The 1-minute series exists but has no market-maker liquidity on testnet today; the UI says so and still prices it. Demo on 5m.
 

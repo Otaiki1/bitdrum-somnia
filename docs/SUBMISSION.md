@@ -48,7 +48,7 @@ Everything was verified against DreamDEX on Shannon during the hackathon:
 - **Opening-price scale confirmed**: oracle raw `7921119` → $79,211.19 against a live index of $79,363. (The SDK documents this scale as empirical, not guaranteed — we checked.)
 - Book populated, quote sized off it: YES 0.731 / NO 0.296 → 5 USDC buys 6.64 shares (+33 %).
 - Positions and claimables for a real trader map cleanly to LIVE · SETTLING · WIN · LOSS · VOID.
-- Wallet writes work — after we found the SDK hardcodes gas and fees that MetaMask rejects, and that the DreamDEX market maker re-quotes fast enough (17¢ in ~5 s) to leave a 3 % protective limit behind during a 10-second wallet confirmation. BitDrum re-quotes at the moment you send and gives you a fill-tolerance control. Those two findings alone are the kind of thing only shipping against the real venue teaches you.
+- A real order filled from MetaMask: BUY UP on a BTC 5 m window, 4.43 USDC escrowed for 6.31 shares — fills landed at the resting prices, under the protective limit. That came after we found the SDK hardcodes gas and fees that MetaMask rejects, and that the DreamDEX market maker re-quotes fast enough (17¢ in ~5 s) to leave a 3 % protective limit behind during a 10-second wallet confirmation. BitDrum re-quotes at the moment you send and gives you a fill-tolerance control. Those two findings alone are the kind of thing only shipping against the real venue teaches you.
 
 ## The business model
 

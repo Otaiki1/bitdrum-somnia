@@ -1,0 +1,6 @@
+node_modules/
+out/
+public/voiceover/*.mp3
+public/voiceover/.cache.json
+public/music/
+.env
