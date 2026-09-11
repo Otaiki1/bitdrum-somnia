@@ -66,6 +66,11 @@ export function attachWallet(walletClient: WalletClient, address: Address): Somn
   return ex;
 }
 
+/** Return the exchange to unauthenticated reads (wallet disconnected). */
+export function detachWallet() {
+  getExchange().setSigner({});
+}
+
 /** Explorer link for a Shannon tx hash. */
 export function explorerTxUrl(hash: string) {
   return `https://shannon-explorer.somnia.network/tx/${hash}`;

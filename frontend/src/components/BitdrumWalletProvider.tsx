@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState } from 'react';
 import { connectBitdrumWallet, type BitdrumWallet } from '../utils/bitdrum';
-import { attachWallet } from '../lib/dreamdex/client';
+import { attachWallet, detachWallet } from '../lib/dreamdex/client';
 
 type BitdrumWalletContextValue = {
   wallet: BitdrumWallet | null;
@@ -52,6 +52,7 @@ export function BitdrumWalletProvider({ children }: { children: React.ReactNode 
     try {
       await wallet.disconnect();
     } finally {
+      detachWallet();
       setWallet(null);
     }
   };
